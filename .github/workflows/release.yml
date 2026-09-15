@@ -148,10 +148,15 @@ jobs:
       contents: write
     steps:
       - name: Delete releases older than the previous one
+        # Retries: the list query runs seconds after publishing, when the
+        # API occasionally 500s on read-after-write. Real breakage still
+        # fails loudly after the third attempt.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'EOF'
+          for attempt in 1 2 3; do
+            if python3 - <<'EOF'
+          
           import json
           import os
           import subprocess
@@ -174,3 +179,13 @@ jobs:
               )
           print("Prune done.")
           EOF
+            then
+              break
+            fi
+            echo "prune query failed (attempt $attempt/3), retrying in 20s..."
+            sleep 20
+            if [ "$attempt" = 3 ]; then
+              echo "prune query kept failing; leaving old releases in place."
+              exit 1
+            fi
+          done

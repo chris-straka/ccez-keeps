@@ -15,7 +15,17 @@ android {
         minSdk = 28
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        // Release CI passes -PVERSION_NAME=<tag>; local builds fall back
+        // to the newest git tag so Settings shows the real version.
+        val tagVersion = providers.gradleProperty("VERSION_NAME").orNull
+            ?: System.getenv("VERSION_NAME")
+            ?: runCatching {
+                ProcessBuilder("git", "describe", "--tags", "--abbrev=0")
+                    .redirectErrorStream(true)
+                    .start().inputStream.bufferedReader().readText().trim()
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        versionName = (tagVersion?.removePrefix("v") ?: "0.0.0-dev")
+            .takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+.*")) } ?: "0.0.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Prod origin. The Worker serves the SPA + /api/* as one unit, so
         // the app talks to the same host as the browser (no CORS involved).

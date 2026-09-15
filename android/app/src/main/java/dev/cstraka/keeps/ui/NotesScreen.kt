@@ -244,6 +244,8 @@ fun NotesScreen(
     theme: ThemeMode = ThemeMode.DARK,
     onTheme: (ThemeMode) -> Unit = {},
     appVersion: String = "",
+    /** Newest release tag when it is newer than this build; null hides. */
+    updateTag: String? = null,
     onUpdate: () -> Unit = {},
     onExport: () -> Unit = {},
 ) {
@@ -570,7 +572,13 @@ fun NotesScreen(
                         TextButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onUpdate()
-                        }) { Text("Get the latest update") }
+                        }) {
+                            Text(
+                                if (updateTag != null) "Update available ($updateTag)" else "Get the latest update",
+                                fontWeight = if (updateTag != null) FontWeight.Bold else FontWeight.Normal,
+                                color = if (updateTag != null) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                            )
+                        }
                         TextButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onExport()

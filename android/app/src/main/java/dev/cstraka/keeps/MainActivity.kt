@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
                     theme = theme,
                     onTheme = notesModel::setTheme,
                     appVersion = BuildConfig.VERSION_NAME,
+                    updateTag = notesModel.updateTag.collectAsState().value,
                     onUpdate = { openUpdatePage() },
                     onExport = { shareExport() },
                 )

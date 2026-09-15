@@ -84,7 +84,7 @@ jobs:
           KEEPS_KEYSTORE_PASSWORD: ${{ secrets.KEEPS_KEYSTORE_PASSWORD }}
           KEEPS_KEY_ALIAS: ${{ secrets.KEEPS_KEY_ALIAS }}
           KEEPS_KEY_PASSWORD: ${{ secrets.KEEPS_KEY_PASSWORD }}
-        run: ./gradlew :synclogic:test :app:assembleRelease
+        run: ./gradlew :synclogic:test :app:assembleRelease -PVERSION_NAME=${GITHUB_REF_NAME}
       - name: Upload APK as workflow artifact
         # NOTE: uses-steps ignore defaults.run.working-directory, so this
         # path is repo-relative, not android-relative.

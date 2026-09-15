@@ -18,7 +18,9 @@ import dev.cstraka.keeps.sync.Label
 import dev.cstraka.keeps.sync.Note
 import dev.cstraka.keeps.sync.NoteLimits
 import dev.cstraka.keeps.sync.ReminderWorker
+import dev.cstraka.keeps.sync.isNewer
 import dev.cstraka.keeps.sync.isNote
+import dev.cstraka.keeps.sync.parseLatestTag
 import dev.cstraka.keeps.sync.SyncEngine
 import dev.cstraka.keeps.sync.SyncStatus
 import dev.cstraka.keeps.sync.SyncWorker
@@ -83,6 +85,55 @@ class NotesViewModel(
 
     private val _composerOpen = MutableStateFlow(false)
     val composerOpen: StateFlow<Boolean> = _composerOpen
+
+    /**
+     * Newest release tag when it is newer than this build; null means up
+     * to date or unknown (offline/errors fail silent, never nudge).
+     * Checked at most once per day; the answer rides a process restart.
+     */
+    private val _updateTag = MutableStateFlow<String?>(null)
+    val updateTag: StateFlow<String?> = _updateTag
+
+    init {
+        checkForUpdate()
+    }
+
+    private fun checkForUpdate() = viewModelScope.launch {
+        val prefs = app.getSharedPreferences("update_check", android.content.Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong("last_check", 0L) < 24 * 60 * 60 * 1000L) {
+            prefs.getString("tag", null)?.let { cached ->
+                if (isNewer(cached, dev.cstraka.keeps.BuildConfig.VERSION_NAME)) {
+                    _updateTag.value = cached
+                }
+            }
+            return@launch
+        }
+        val tag = withContext(kotlinx.coroutines.Dispatchers.IO) { fetchLatestTag() }
+        prefs.edit().putLong("last_check", now).apply()
+        if (tag == null) return@launch
+        prefs.edit().putString("tag", tag).apply()
+        if (isNewer(tag, dev.cstraka.keeps.BuildConfig.VERSION_NAME)) {
+            _updateTag.value = tag
+        }
+    }
+
+    private fun fetchLatestTag(): String? {
+        return try {
+            val url = java.net.URL(
+                "https://api.github.com/repos/chris-straka/ccez-keeps/releases/latest",
+            )
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            conn.setRequestProperty("Accept", "application/vnd.github+json")
+            if (conn.responseCode != 200) return null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }.take(100_000)
+            parseLatestTag(body)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     /** Widget + notification taps open a blank composer through here. */
     fun setComposer(open: Boolean) {

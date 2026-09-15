@@ -43,6 +43,27 @@ fires once); clients schedule notifications locally and advance repeating
 rows on fire, the server never fires. All three fields ride note sync
 under LWW with no new table or endpoint.
 
+## Structured checklists + image attachments (amendment, implemented)
+
+`Note.checklist: ChecklistItem[]|null` (`null` = plain text note; missing
+in old rows/clients = `null`), where an item is `{ id, text, checked }`
+(at most 100 items, text at most 500 chars, id at most 64 chars; stored
+as a JSON string in `notes.checklist`, `NULL` = text note). Toggles ride
+note sync under LWW like `labelIds` (concurrent toggles from two devices:
+last write wins the whole list). Checklist-mode editors keep `body` as
+the joined item lines so older clients still show the text.
+
+`Note.attachments: Attachment[]` (missing = `[]`), where an attachment
+is `{ id, name, mime, size, dataUrl, thumbUrl }`: client-downscaled
+images only (`mime` must start with `image/`, both URLs are strict
+`data:image/...;base64,...`), full image at most 700,000 decoded bytes,
+thumbnail at most 40,000, at most 10 per note, name at most 200 chars.
+Stored as a JSON string in `notes.attachments` (default `'[]'`).
+Validated, never interpreted server-side; previews render `thumbUrl`,
+full view renders `dataUrl`. Both fields ride note sync, export/import,
+and backup with no new table or endpoint. Search tier 3 (both clients):
+checklist item text and attachment file names match below the body tier.
+
 ## IndexedDB (lane B implements; interface frozen here)
 
 - Database: `ccez-keeps`, version `2` (v1 databases upgrade in place,
@@ -62,5 +83,7 @@ under LWW with no new table or endpoint.
 ## D1 (lane C implements; schema frozen in db/schema.ts)
 
 Table `notes(id TEXT PK, title TEXT, body TEXT, color TEXT, pinned INT,
-archived INT, updatedAt INT, deleted INT)` via Drizzle `db/schema.ts`.
+archived INT, updatedAt INT, deleted INT, labelIds TEXT JSON default
+'[]', reminderAt INT NULL, repeat TEXT NULL, checklist TEXT JSON NULL,
+attachments TEXT JSON default '[]', seq INT)` via Drizzle `db/schema.ts`.
 Migrations in `db/migrations/` are generated with `bun run db:generate`.

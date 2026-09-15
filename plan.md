@@ -120,7 +120,7 @@ Dependencies: 0 before A/B/C; A+B before E; C before D (hosting contract); A+B+C
 ## Open Questions
 
 - Confirm Access scope: one exact email address, or whole domain? Default: one exact email allowlist.
-- Note images/files in v1, or text-only first? Default: text + color + pin/archive; attachments deferred.
+- Note images/files in v1, or text-only first? Resolved after v1: structured checklists and client-downscaled image attachments shipped (see contracts/data.md amendment); other file kinds stay deferred.
 
 ## Sources
 

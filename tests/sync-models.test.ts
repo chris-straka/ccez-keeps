@@ -22,6 +22,8 @@ const DDL = `CREATE TABLE notes (
   labelIds text DEFAULT '[]' NOT NULL,
   reminderAt integer,
   repeat text,
+  checklist text,
+  attachments text DEFAULT '[]' NOT NULL,
   seq integer DEFAULT 0 NOT NULL
 );
 CREATE TABLE _sync_seq (
@@ -142,6 +144,97 @@ describe("isNote labelIds/reminderAt", () => {
       expect(isNote({ ...note({ id: "x" }), reminderAt })).toBe(false);
     }
     expect(isNote({ ...note({ id: "x" }), reminderAt: null })).toBe(true);
+  });
+});
+
+const goodAttachment = {
+  id: "a1",
+  name: "photo.png",
+  mime: "image/png",
+  size: 6,
+  dataUrl: "data:image/png;base64,iVBORw==",
+  thumbUrl: "data:image/png;base64,iVBORw==",
+};
+
+describe("isNote checklist/attachments", () => {
+  test("defaults to text note with no attachments; missing fields stay valid", () => {
+    const n = newNote({ id: "a" });
+    expect(n.checklist).toBeNull();
+    expect(n.attachments).toEqual([]);
+    expect(isNote(n)).toBe(true);
+    const { checklist, attachments, ...legacy } = n;
+    expect(isNote(legacy)).toBe(true);
+  });
+
+  test("accepts populated checklist and attachments", () => {
+    expect(
+      isNote(
+        note({
+          id: "x",
+          checklist: [
+            { id: "c1", text: "milk", checked: false },
+            { id: "c2", text: "eggs", checked: true },
+          ],
+          attachments: [goodAttachment],
+        }),
+      ),
+    ).toBe(true);
+    expect(isNote(note({ id: "x", checklist: [] }))).toBe(true);
+  });
+
+  test("rejects checklist violations and cap overflow", () => {
+    expect(isNote({ ...note({ id: "x" }), checklist: "milk" })).toBe(false);
+    expect(
+      isNote({ ...note({ id: "x" }), checklist: [{ id: "", text: "t", checked: false }] }),
+    ).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        checklist: [{ id: "c", text: "t", checked: "yes" }],
+      }),
+    ).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        checklist: [{ id: "c", text: "x".repeat(501), checked: false }],
+      }),
+    ).toBe(false);
+    const many = Array.from({ length: 101 }, (_, i) => ({
+      id: `c${i}`,
+      text: "t",
+      checked: false,
+    }));
+    expect(isNote({ ...note({ id: "x" }), checklist: many })).toBe(false);
+  });
+
+  test("rejects attachment violations and cap overflow", () => {
+    expect(isNote({ ...note({ id: "x" }), attachments: {} })).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        attachments: [{ ...goodAttachment, mime: "application/pdf" }],
+      }),
+    ).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        attachments: [{ ...goodAttachment, dataUrl: "https://x/y.png" }],
+      }),
+    ).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        attachments: [{ ...goodAttachment, dataUrl: "data:image/png;base64,!!!" }],
+      }),
+    ).toBe(false);
+    expect(
+      isNote({
+        ...note({ id: "x" }),
+        attachments: [{ ...goodAttachment, thumbUrl: "data:image/png;base64," + "QUJD".repeat(20000) }],
+      }),
+    ).toBe(false);
+    const many = Array.from({ length: 11 }, (_, i) => ({ ...goodAttachment, id: `a${i}` }));
+    expect(isNote({ ...note({ id: "x" }), attachments: many })).toBe(false);
   });
 });
 
@@ -269,6 +362,37 @@ describe("notes carrying labelIds/reminderAt", () => {
       labelIds: ["l1", "l2"],
       reminderAt: 1700000000000,
     });
+  });
+
+  test("checklist and attachments survive a sync round-trip unchanged", async () => {
+    const full = note({
+      id: "c",
+      checklist: [{ id: "c1", text: "milk", checked: true }],
+      attachments: [goodAttachment],
+    });
+    const push = await postNotesSync({ upserts: [full] });
+    expect(push.status).toBe(200);
+    expect(push.body["applied"]).toBe(1);
+    const pull = (await (
+      await app.request("http://localhost/api/notes?since=0")
+    ).json()) as { notes: Note[] };
+    expect(pull.notes.find((n) => n.id === "c")).toMatchObject({
+      checklist: [{ id: "c1", text: "milk", checked: true }],
+      attachments: [goodAttachment],
+    });
+  });
+
+  test("notes sync rejects invalid checklist/attachments like any malformed note", async () => {
+    const bad = await postNotesSync({
+      upserts: [{ ...note({ id: "bad" }), checklist: [{ id: "c", text: "t" }] }],
+    });
+    expect(bad.status).toBe(400);
+    const badFile = await postNotesSync({
+      upserts: [
+        { ...note({ id: "bad2" }), attachments: [{ ...goodAttachment, mime: "video/mp4" }] },
+      ],
+    });
+    expect(badFile.status).toBe(400);
   });
 
   test("reminderAt null persists; stale reminder edit loses; newer reminder wins", async () => {

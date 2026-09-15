@@ -18,6 +18,8 @@ const DDL = `CREATE TABLE notes (
   labelIds text DEFAULT '[]' NOT NULL,
   reminderAt integer,
   repeat text,
+  checklist text,
+  attachments text DEFAULT '[]' NOT NULL,
   seq integer DEFAULT 0 NOT NULL
 );
 CREATE TABLE drawings (

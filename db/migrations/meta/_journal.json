@@ -50,6 +50,13 @@
       "when": 1789503921111,
       "tag": "0006_bumpy_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789505459927,
+      "tag": "0007_silly_queen_noir",
+      "breakpoints": true
     }
   ]
 }

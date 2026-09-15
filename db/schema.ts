@@ -18,6 +18,12 @@ export const notes = sqliteTable("notes", {
   reminderAt: integer("reminderAt"),
   // Repeat rule; NULL = fires once. Validated, never interpreted server-side.
   repeat: text("repeat"),
+  // Checklist items as a JSON array (null = plain text note); rides note
+  // sync free under LWW. Validated, never interpreted server-side.
+  checklist: text("checklist"),
+  // Image attachments as a JSON array (data URLs, client-downscaled).
+  // Validated size caps, never interpreted server-side.
+  attachments: text("attachments").notNull().default("[]"),
   // Server-assigned write sequence (dissemination order). Conflicts are
   // still decided by updatedAt (wall clock, LWW); seq only decides WHAT
   // the client hasn't seen, so late-arriving old-timestamp rows stay

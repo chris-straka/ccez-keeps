@@ -8,6 +8,10 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import dev.cstraka.keeps.sync.Attachment
+import dev.cstraka.keeps.sync.ChecklistItem
 import dev.cstraka.keeps.sync.Note
 import dev.cstraka.keeps.sync.apiJson
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +39,10 @@ data class NoteEntity(
     val reminderAt: Long? = null,
     /** Repeat rule ("daily"/"weekly"); null = fires once (v4). */
     val repeat: String? = null,
+    /** Checklist items as a JSON array string; null = plain text note (v5). */
+    val checklist: String? = null,
+    /** Image attachments as a JSON array string (v5). */
+    val attachments: String = "[]",
 )
 
 fun NoteEntity.toNote(): Note = Note(
@@ -48,6 +56,8 @@ fun NoteEntity.toNote(): Note = Note(
     },
     reminderAt = reminderAt,
     repeat = repeat,
+    checklist = decodeChecklist(checklist),
+    attachments = decodeAttachments(attachments),
 )
 
 fun Note.toEntity(): NoteEntity = NoteEntity(
@@ -57,7 +67,26 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     labelIds = apiJson.encodeToString(labelIds),
     reminderAt = reminderAt,
     repeat = repeat,
+    checklist = checklist?.let { apiJson.encodeToString(it) },
+    attachments = apiJson.encodeToString(attachments),
 )
+
+private fun decodeChecklist(raw: String?): List<ChecklistItem>? {
+    if (raw == null) return null
+    return try {
+        apiJson.decodeFromString<List<ChecklistItem>>(raw)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun decodeAttachments(raw: String): List<Attachment> {
+    return try {
+        apiJson.decodeFromString<List<Attachment>>(raw)
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
 
 @Dao
 interface NoteDao {
@@ -82,11 +111,22 @@ interface NoteDao {
 
 @Database(
     entities = [NoteEntity::class, DrawingEntity::class, LabelEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class KeepsDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun drawingDao(): DrawingDao
     abstract fun labelDao(): LabelDao
+}
+
+/**
+ * v4 -> v5: note checklist + attachments columns. Existing rows keep their
+ * rows; new columns default to plain text note with no attachments.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `checklist` TEXT")
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `attachments` TEXT NOT NULL DEFAULT '[]'")
+    }
 }

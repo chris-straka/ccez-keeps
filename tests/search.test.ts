@@ -54,4 +54,53 @@ describe("rankNotes", () => {
     ];
     expect(rankNotes(notes, "MILK").map((n) => n.id)).toEqual(["pre", "sub"]);
   });
+
+  test("checklist item text and attachment names match below body", () => {
+    const notes = [
+      note({
+        id: "extra",
+        title: "Trip",
+        body: "plain",
+        checklist: [{ id: "c1", text: "buy oatmilk", checked: false }],
+        updatedAt: 1000,
+      }),
+      note({
+        id: "file",
+        title: "Trip",
+        body: "plain",
+        checklist: null,
+        attachments: [
+          {
+            id: "a1",
+            name: "oatmilk-label.png",
+            mime: "image/png",
+            size: 4,
+            dataUrl: "data:image/png;base64,iVBORw==",
+            thumbUrl: "data:image/png;base64,iVBORw==",
+          },
+        ],
+        updatedAt: 2000,
+      }),
+      note({ id: "body", title: "Trip", body: "oatmilk latte", updatedAt: 500 }),
+      note({ id: "none", title: "Trip", body: "plain", updatedAt: 3000 }),
+    ];
+    expect(rankNotes(notes, "oatmilk").map((n) => n.id)).toEqual([
+      "body",
+      "file",
+      "extra",
+    ]);
+  });
+
+  test("extras match case-insensitively", () => {
+    const notes = [
+      note({
+        id: "1",
+        title: "t",
+        body: "b",
+        checklist: [{ id: "c1", text: "BUY Eggs", checked: true }],
+        updatedAt: 1000,
+      }),
+    ];
+    expect(rankNotes(notes, "eggs").map((n) => n.id)).toEqual(["1"]);
+  });
 });

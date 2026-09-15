@@ -49,4 +49,27 @@ class SearchTest {
         assertEquals(listOf("a", "b"), rankNotes("   ", notes).map { it.id })
         assertTrue(rankNotes("", emptyList()).isEmpty())
     }
+
+    @Test
+    fun checklistAndAttachmentNamesMatchBelowBody() {
+        val notes = listOf(
+            newNote(
+                id = "extra", title = "Trip", body = "plain", updatedAt = 100L,
+                checklist = listOf(ChecklistItem(id = "c1", text = "buy oatmilk", checked = false)),
+            ),
+            newNote(
+                id = "file", title = "Trip", body = "plain", updatedAt = 200L,
+                attachments = listOf(
+                    Attachment(
+                        id = "a1", name = "oatmilk-label.png", mime = "image/png", size = 4L,
+                        dataUrl = "data:image/png;base64,iVBORw==",
+                        thumbUrl = "data:image/png;base64,iVBORw==",
+                    ),
+                ),
+            ),
+            note("body", title = "Trip", body = "oatmilk latte", updatedAt = 50L),
+            note("none", title = "Trip", body = "plain", updatedAt = 300L),
+        )
+        assertEquals(listOf("body", "file", "extra"), rankNotes("oatmilk", notes).map { it.id })
+    }
 }

@@ -13,7 +13,14 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { notes, syncSeq, type NoteRow } from "../db/schema.js";
-import { isNote, type Note } from "../shared/note.js";
+import {
+  isAttachment,
+  isChecklistItem,
+  isNote,
+  type Attachment,
+  type ChecklistItem,
+  type Note,
+} from "../shared/note.js";
 import { mergeNoteLists, pickWinner } from "../shared/sync.js";
 
 export type NotesDb = BunSQLiteDatabase | DrizzleD1Database;
@@ -53,6 +60,37 @@ function parseRepeat(raw: unknown, id: string): "daily" | "weekly" | null {
   throw new Error(`rowToNote: corrupt row ${id}`);
 }
 
+function parseChecklist(raw: unknown, id: string): ChecklistItem[] | null {
+  // Tolerant of pre-migration rows (missing column): plain text notes.
+  if (raw === undefined || raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw as string);
+  } catch {
+    throw new Error(`rowToNote: corrupt row ${id}`);
+  }
+  if (parsed === null) return null;
+  if (!Array.isArray(parsed) || !parsed.every(isChecklistItem)) {
+    throw new Error(`rowToNote: corrupt row ${id}`);
+  }
+  return parsed;
+}
+
+function parseAttachments(raw: unknown, id: string): Attachment[] {
+  // Tolerant of pre-migration rows (missing column): no attachments.
+  if (raw === undefined || raw === null) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw as string);
+  } catch {
+    throw new Error(`rowToNote: corrupt row ${id}`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every(isAttachment)) {
+    throw new Error(`rowToNote: corrupt row ${id}`);
+  }
+  return parsed;
+}
+
 export function rowToNote(row: NoteRow): Note {
   const note = {
     id: row.id,
@@ -66,6 +104,8 @@ export function rowToNote(row: NoteRow): Note {
     labelIds: parseLabelIds(row.labelIds, row.id),
     reminderAt: row.reminderAt ?? null,
     repeat: parseRepeat(row.repeat, row.id),
+    checklist: parseChecklist(row.checklist, row.id),
+    attachments: parseAttachments(row.attachments, row.id),
   };
   if (!isNote(note)) throw new Error(`rowToNote: corrupt row ${row.id}`);
   return note;
@@ -84,6 +124,8 @@ export function noteToRow(note: Note, seq: number): NoteRow {
     labelIds: JSON.stringify(note.labelIds),
     reminderAt: note.reminderAt,
     repeat: note.repeat,
+    checklist: note.checklist === null ? null : JSON.stringify(note.checklist),
+    attachments: JSON.stringify(note.attachments ?? []),
     seq,
   };
 }

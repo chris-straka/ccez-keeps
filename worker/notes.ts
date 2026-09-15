@@ -46,6 +46,13 @@ function parseLabelIds(raw: unknown, id: string): string[] {
   return parsed;
 }
 
+function parseRepeat(raw: unknown, id: string): "daily" | "weekly" | null {
+  // Tolerant of pre-migration rows (missing column): they fire once.
+  if (raw === undefined || raw === null) return null;
+  if (raw === "daily" || raw === "weekly") return raw;
+  throw new Error(`rowToNote: corrupt row ${id}`);
+}
+
 export function rowToNote(row: NoteRow): Note {
   const note = {
     id: row.id,
@@ -58,6 +65,7 @@ export function rowToNote(row: NoteRow): Note {
     deleted: row.deleted === 1,
     labelIds: parseLabelIds(row.labelIds, row.id),
     reminderAt: row.reminderAt ?? null,
+    repeat: parseRepeat(row.repeat, row.id),
   };
   if (!isNote(note)) throw new Error(`rowToNote: corrupt row ${row.id}`);
   return note;
@@ -75,6 +83,7 @@ export function noteToRow(note: Note, seq: number): NoteRow {
     deleted: note.deleted ? 1 : 0,
     labelIds: JSON.stringify(note.labelIds),
     reminderAt: note.reminderAt,
+    repeat: note.repeat,
     seq,
   };
 }

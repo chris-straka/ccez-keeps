@@ -41,7 +41,12 @@ export abstract class BaseStore implements Store {
 
   async list(view: NoteView): Promise<Note[]> {
     const notes = await this.all();
-    return notes.filter((n) => inView(n, view)).sort(compareNotes);
+    const filtered = notes.filter((n) => inView(n, view));
+    // Agenda order is fire time (overdue first), not pin/recency.
+    if (view === "reminders") {
+      return filtered.sort((a, b) => (a.reminderAt ?? Infinity) - (b.reminderAt ?? Infinity));
+    }
+    return filtered.sort(compareNotes);
   }
 
   async search(query: string, view: NoteView): Promise<Note[]> {

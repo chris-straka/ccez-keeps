@@ -28,6 +28,8 @@ const ICONS: Record<NoteView, string> = {
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="6.5" y1="9" x2="9.5" y2="9"/></svg>',
   trash:
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4"/><line x1="6.5" y1="6.5" x2="6.5" y2="11"/><line x1="9.5" y1="6.5" x2="9.5" y2="11"/></svg>',
+  reminders:
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2a4 4 0 0 1 4 4c0 3 1 4 1 4H3s1-1 1-4a4 4 0 0 1 4-4z"/><line x1="6.5" y1="12.5" x2="9.5" y2="12.5"/></svg>',
 };
 
 const NAV_ICON =
@@ -35,6 +37,7 @@ const NAV_ICON =
 
 const VIEWS: { id: NoteView; label: string }[] = [
   { id: "notes", label: "Notes" },
+  { id: "reminders", label: "Reminders" },
   { id: "archive", label: "Archive" },
   { id: "trash", label: "Trash" },
 ];
@@ -687,7 +690,11 @@ export class KeepsApp extends HTMLElement {
       const empty = doc.createElement("div");
       empty.className = "empty";
       empty.textContent =
-        this.view === "trash" ? "Trash is empty" : "No notes yet";
+        this.view === "trash"
+          ? "Trash is empty"
+          : this.view === "reminders"
+            ? "No upcoming reminders"
+            : "No notes yet";
       grid.appendChild(empty);
     }
   }

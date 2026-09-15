@@ -274,6 +274,7 @@ fun NotesScreen(
                         modifier = Modifier.padding(16.dp))
                     for ((label, f) in listOf(
                         "Notes" to NoteFilter.NOTES,
+                        "Reminders" to NoteFilter.REMINDERS,
                         "Archive" to NoteFilter.ARCHIVE,
                         "Trash" to NoteFilter.TRASH,
                     )) {
@@ -407,6 +408,7 @@ fun NotesScreen(
                                 Text(
                                     when (state.filter) {
                                         NoteFilter.NOTES -> "No notes yet — tap + to take one."
+                                        NoteFilter.REMINDERS -> "No upcoming reminders."
                                         NoteFilter.ARCHIVE -> "Nothing archived."
                                         NoteFilter.TRASH -> "Trash is empty."
                                     },

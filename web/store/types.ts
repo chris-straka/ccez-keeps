@@ -4,11 +4,13 @@
 // remove()/restore() stamp a fresh updatedAt themselves.
 import type { Note } from "../../shared/note.js";
 
-export type NoteView = "notes" | "archive" | "trash";
+export type NoteView = "notes" | "archive" | "trash" | "reminders";
 
 export function inView(note: Note, view: NoteView): boolean {
   if (view === "trash") return note.deleted;
   if (note.deleted) return false;
+  // Agenda spans notes + archive: a firing reminder must not hide.
+  if (view === "reminders") return note.reminderAt !== null && note.reminderAt !== undefined;
   return view === "archive" ? note.archived : !note.archived;
 }
 

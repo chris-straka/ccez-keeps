@@ -18,9 +18,11 @@ import dev.cstraka.keeps.sync.Label
 import dev.cstraka.keeps.sync.Note
 import dev.cstraka.keeps.sync.NoteLimits
 import dev.cstraka.keeps.sync.ReminderWorker
+import dev.cstraka.keeps.sync.isAgendaNote
 import dev.cstraka.keeps.sync.isNewer
 import dev.cstraka.keeps.sync.isNote
 import dev.cstraka.keeps.sync.parseLatestTag
+import dev.cstraka.keeps.sync.sortAgenda
 import dev.cstraka.keeps.sync.SyncEngine
 import dev.cstraka.keeps.sync.SyncStatus
 import dev.cstraka.keeps.sync.SyncWorker
@@ -34,7 +36,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class NoteFilter { NOTES, ARCHIVE, TRASH }
+enum class NoteFilter { NOTES, REMINDERS, ARCHIVE, TRASH }
 
 data class NotesUiState(
     val notes: List<Note> = emptyList(),
@@ -184,12 +186,19 @@ class NotesViewModel(
         val bucketed = all.filter { note ->
             val inBucket = when (core.basics.f) {
                 NoteFilter.NOTES -> !note.archived && !note.deleted
+                NoteFilter.REMINDERS -> isAgendaNote(note)
                 NoteFilter.ARCHIVE -> note.archived && !note.deleted
                 NoteFilter.TRASH -> note.deleted
             }
             inBucket && (lf == null || lf in note.labelIds)
         }
-        val visible = rankNotes(core.basics.q, bucketed)
+        // Agenda order is fire time (overdue first); search still ranks.
+        val ordered = if (core.basics.f == NoteFilter.REMINDERS && core.basics.q.isBlank()) {
+            sortAgenda(bucketed)
+        } else {
+            bucketed
+        }
+        val visible = rankNotes(core.basics.q, ordered)
         NotesUiState(
             visible, core.basics.q, core.basics.f, core.ephemera.status,
             core.ephemera.ed, core.ephemera.delErr, core.basics.drawings, liveLabels, lf,

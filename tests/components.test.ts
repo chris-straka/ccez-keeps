@@ -109,6 +109,21 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("sidebar reminders view shows firing notes in time order", async () => {
+    const t = mount([
+      note({ id: "plain", title: "Plain" }),
+      note({ id: "later", title: "Later", reminderAt: 9000 }),
+      note({ id: "soon", title: "Soon", reminderAt: 1000 }),
+    ]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="reminders"]')!.click();
+    await t.tick();
+    expect(t.cards()).toHaveLength(2);
+    expect(t.cards()[0]?.textContent).toContain("Soon");
+    expect(t.cards()[1]?.textContent).toContain("Later");
+    t.cleanup();
+  });
+
   test("composer creates a note and schedules a push", async () => {
     const t = mount();
     await t.ready;

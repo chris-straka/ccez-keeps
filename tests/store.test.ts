@@ -47,6 +47,19 @@ function suite(name: string, make: () => Store) {
       expect((await store.list("trash")).map((n) => n.id)).toEqual(["4"]);
     });
 
+    test("reminders view spans notes+archive in fire-time order", async () => {
+      await store.put(note({ id: "plain", updatedAt: 100 }));
+      await store.put(note({ id: "later", reminderAt: 9000, updatedAt: 200 }));
+      await store.put(note({ id: "soon", reminderAt: 1000, updatedAt: 300 }));
+      await store.put(note({ id: "arch", archived: true, reminderAt: 5000, updatedAt: 400 }));
+      await store.put(note({ id: "gone", deleted: true, reminderAt: 100, updatedAt: 500 }));
+      expect((await store.list("reminders")).map((n) => n.id)).toEqual([
+        "soon",
+        "arch",
+        "later",
+      ]);
+    });
+
     test("remove writes tombstone; restore revives", async () => {
       await store.put(note({ id: "1", updatedAt: 100 }));
       await store.remove("1");

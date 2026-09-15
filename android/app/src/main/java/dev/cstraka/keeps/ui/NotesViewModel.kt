@@ -208,7 +208,11 @@ class NotesViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotesUiState())
 
-    private fun touch() = SyncWorker.scheduleNow(app)
+    private fun touch() {
+        SyncWorker.scheduleNow(app)
+        // Every local write rebinds the list widget (no-op with none placed).
+        dev.cstraka.keeps.widget.NotesListWidget.refreshAll(app)
+    }
 
     fun setQuery(q: String) { query.value = q }
     fun setFilter(f: NoteFilter) { filter.value = f }

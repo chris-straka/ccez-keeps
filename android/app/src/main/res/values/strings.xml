@@ -3,4 +3,7 @@
     <string name="widget_label">Keeps Quick Capture</string>
     <string name="widget_new_note">New note</string>
     <string name="widget_desc">Start a new Keeps note with one tap.</string>
+    <string name="widget_list_label">Keeps Notes</string>
+    <string name="widget_list_desc">Your newest Keeps notes; tap one to open it.</string>
+    <string name="widget_list_empty">No notes yet.</string>
 </resources>

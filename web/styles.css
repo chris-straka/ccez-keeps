@@ -468,6 +468,19 @@ note-card:focus-within .card-actions {
   margin-top: 12px;
 }
 
+.trash-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.trash-head span {
+  flex: 1;
+}
+
 .sidebar-footer {
   display: flex;
   gap: 6px;

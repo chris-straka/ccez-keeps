@@ -425,6 +425,30 @@ describe("keeps-app", () => {
     });
   });
 
+  test("empty trash arms on first click, deletes each item on second", async () => {
+    const t = mount([
+      note({ id: "1", title: "Gone", deleted: true }),
+      note({ id: "2", title: "Live" }),
+    ]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="trash"]')!.click();
+    await t.tick();
+    expect(t.cards()).toHaveLength(1);
+    const button = () => t.app.querySelector<HTMLButtonElement>("[data-empty-trash]")!;
+    expect(t.app.querySelector(".trash-head")?.textContent).toContain("1 item");
+    expect(button().textContent).toBe("Empty trash");
+    button().click();
+    await t.tick();
+    await t.tick();
+    expect(button().textContent).toBe("Click again to confirm");
+    expect(t.stats().deletedForever).toEqual([]);
+    button().click();
+    await t.tick();
+    await t.tick();
+    expect(t.stats().deletedForever).toEqual(["1"]);
+    t.cleanup();
+  });
+
   test("500-note fixture renders completely", async () => {
     const fixture = makeFixture(500);
     const expected = fixture.filter((n) => !n.archived && !n.deleted).length;

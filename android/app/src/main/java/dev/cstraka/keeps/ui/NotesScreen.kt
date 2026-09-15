@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
@@ -111,6 +112,7 @@ import dev.cstraka.keeps.sync.Drawing
 import dev.cstraka.keeps.sync.DrawingStroke
 import dev.cstraka.keeps.sync.Label
 import dev.cstraka.keeps.sync.Note
+import dev.cstraka.keeps.sync.labelTint
 import dev.cstraka.keeps.sync.SpanKind
 import dev.cstraka.keeps.sync.SyncStatus
 import dev.cstraka.keeps.sync.parseRichBody
@@ -673,13 +675,14 @@ private fun NoteCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     for (lab in attached) {
+                        val tint = Color(labelTint(lab.color, dark))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(Color.White.copy(alpha = 0.14f))
+                                .border(1.dp, tint, RoundedCornerShape(10.dp))
                                 .padding(horizontal = 8.dp, vertical = 2.dp),
                         ) {
-                            Text(lab.name, fontSize = 11.sp)
+                            Text(lab.name, fontSize = 11.sp, color = tint)
                         }
                     }
                 }

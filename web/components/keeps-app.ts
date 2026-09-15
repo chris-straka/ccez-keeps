@@ -56,6 +56,8 @@ export class KeepsApp extends HTMLElement {
   private store: (Store & DrawingStore) | undefined;
   private sync: SyncPort | undefined;
   private view: NoteView = "notes";
+  private emptyArmed = false;
+  private emptyTrashTimer: number | undefined;
   private theme: Theme = "dark";
   private query = "";
   private editingId: string | null = null;
@@ -528,6 +530,33 @@ export class KeepsApp extends HTMLElement {
     }
   }
 
+  /** Two-step empty-trash: arm on first click, delete on second. */
+  private async onEmptyTrash(): Promise<void> {
+    if (!this.emptyArmed) {
+      this.emptyArmed = true;
+      buzz("tap");
+      await this.refresh();
+      window.clearTimeout(this.emptyTrashTimer);
+      this.emptyTrashTimer = window.setTimeout(() => {
+        this.emptyArmed = false;
+        void this.refresh();
+      }, 5000);
+      return;
+    }
+    window.clearTimeout(this.emptyTrashTimer);
+    this.emptyArmed = false;
+    try {
+      const trash = await this.requireStore().list("trash");
+      for (const note of trash) await this.sync?.deleteForever(note.id);
+      buzz("destructive");
+    } catch {
+      buzz("error");
+      const el = this.querySelector(".sync-status");
+      if (el) el.textContent = "Connect to finish emptying trash";
+    }
+    await this.refresh();
+  }
+
   private async onDeviceAction(button: HTMLElement, action: string): Promise<void> {
     if (action === "refresh") {
       buzz("tap");
@@ -570,6 +599,17 @@ export class KeepsApp extends HTMLElement {
     if (!grid) return;
     grid.textContent = "";
     const doc = this.ownerDocument;
+    if (this.view === "trash" && notes.length > 0) {
+      const head = doc.createElement("div");
+      head.className = "trash-head";
+      const count = doc.createElement("span");
+      count.textContent = `${notes.length} item${notes.length === 1 ? "" : "s"}`;
+      const empty = doc.createElement("button");
+      empty.dataset["emptyTrash"] = "";
+      empty.textContent = this.emptyArmed ? "Click again to confirm" : "Empty trash";
+      head.append(count, empty);
+      grid.appendChild(head);
+    }
     const names = this.labelNameMap();
     const colors = this.labelColorMap();
     for (const note of notes) {
@@ -691,7 +731,13 @@ export class KeepsApp extends HTMLElement {
       }
       this.view = id as NoteView;
       this.devicesOpen = false;
+      this.emptyArmed = false;
+      window.clearTimeout(this.emptyTrashTimer);
       void this.refresh();
+      return;
+    }
+    if (target.closest("[data-empty-trash]")) {
+      void this.onEmptyTrash();
       return;
     }
     const toastBtn = target.closest("[data-toast]");

@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -81,6 +84,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
@@ -108,18 +113,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import dev.cstraka.keeps.data.attachmentBitmap
+import dev.cstraka.keeps.data.processImageBytes
+import dev.cstraka.keeps.sync.Attachment
+import dev.cstraka.keeps.sync.ChecklistItem
 import dev.cstraka.keeps.sync.Drawing
 import dev.cstraka.keeps.sync.DrawingStroke
 import dev.cstraka.keeps.sync.Label
 import dev.cstraka.keeps.sync.Note
+import dev.cstraka.keeps.sync.NoteLimits
 import dev.cstraka.keeps.sync.labelTint
 import dev.cstraka.keeps.sync.SpanKind
 import dev.cstraka.keeps.sync.SyncStatus
 import dev.cstraka.keeps.sync.parseRichBody
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Card tints per color key. Dark is the muted set mirroring the web dark
@@ -205,12 +218,12 @@ fun NotesScreen(
     onQuery: (String) -> Unit,
     onFilter: (NoteFilter) -> Unit,
     onLabelFilter: (String?) -> Unit = {},
-    onCreate: (String, String, List<String>, Long?, String?) -> Unit,
+    onCreate: (String, String, List<String>, Long?, String?, List<ChecklistItem>?, List<Attachment>) -> Unit,
     composerOpen: Boolean = false,
     onComposerOpen: (Boolean) -> Unit = {},
     onOpenEditor: (Note?) -> Unit,
     onCloseEditor: () -> Unit,
-    onSave: (Note, String, String, String) -> Unit,
+    onSave: (Note, String, String, String, List<ChecklistItem>?, List<Attachment>) -> Unit,
     onSaveExtras: (Note, List<String>, Long?, String?) -> Unit = { _, _, _, _ -> },
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
@@ -454,8 +467,8 @@ fun NotesScreen(
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = { onComposerOpen(false) },
-                onConfirm = { t, b, c, labIds, reminder, repeat ->
-                    onCreate(t, b, labIds, reminder, repeat)
+                onConfirm = { t, b, c, labIds, reminder, repeat, checklist, attachments ->
+                    onCreate(t, b, labIds, reminder, repeat, checklist, attachments)
                     onComposerOpen(false)
                 },
                 onSaveDrawing = onSaveDrawing,
@@ -472,11 +485,13 @@ fun NotesScreen(
                 initialLabelIds = note.labelIds,
                 initialReminderAt = note.reminderAt,
                 initialRepeat = note.repeat,
+                initialChecklist = note.checklist,
+                initialAttachments = note.attachments,
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = onCloseEditor,
-                onConfirm = { t, b, c, labIds, reminder, repeat ->
-                    onSave(note, t, b, c)
+                onConfirm = { t, b, c, labIds, reminder, repeat, checklist, attachments ->
+                    onSave(note, t, b, c, checklist, attachments)
                     onSaveExtras(note, labIds, reminder, repeat)
                 },
                 onSaveDrawing = onSaveDrawing,
@@ -643,6 +658,63 @@ private fun NoteBody(body: String, drawings: Map<String, Drawing>) {
 fun formatReminder(at: Long): String =
     SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(at))
 
+private const val CHECKLIST_PREVIEW_LIMIT = 5
+private const val ATTACHMENT_PREVIEW_LIMIT = 3
+
+/** Read-only item rows for the card; hidden when the note has no checklist. */
+@Composable
+private fun ChecklistPreview(checklist: List<ChecklistItem>?) {
+    if (checklist == null) return
+    Column {
+        for (item in checklist.take(CHECKLIST_PREVIEW_LIMIT)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (item.checked) "☑" else "☐",
+                    color = Color.Gray,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    item.text.ifBlank { " " },
+                    fontSize = 13.sp,
+                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                    color = if (item.checked) Color.Gray else Color.Unspecified,
+                )
+            }
+        }
+        val extra = checklist.size - CHECKLIST_PREVIEW_LIMIT
+        if (extra > 0) Text("+$extra more", fontSize = 11.sp, color = Color.Gray)
+    }
+}
+
+/** Thumbnail strip for the card; hidden when there are no attachments. */
+@Composable
+private fun AttachmentStrip(attachments: List<Attachment>) {
+    if (attachments.isEmpty()) return
+    val shown = attachments.take(ATTACHMENT_PREVIEW_LIMIT)
+    Column {
+        for (a in shown) {
+            val bitmap = remember(a.thumbUrl) { attachmentBitmap(a.thumbUrl)?.asImageBitmap() }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = a.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = if (shown.size == 1) {
+                        Modifier.fillMaxWidth().heightIn(max = 180.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    } else {
+                        Modifier.size(64.dp).clip(RoundedCornerShape(6.dp))
+                    },
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+        val extra = attachments.size - ATTACHMENT_PREVIEW_LIMIT
+        if (extra > 0) Text("+$extra more", fontSize = 11.sp, color = Color.Gray)
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NoteCard(
@@ -673,7 +745,12 @@ private fun NoteCard(
                 Text(note.title, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
             }
-            if (note.body.isNotBlank()) NoteBody(note.body, drawings)
+            AttachmentStrip(note.attachments)
+            if (note.checklist != null) {
+                ChecklistPreview(note.checklist)
+            } else if (note.body.isNotBlank()) {
+                NoteBody(note.body, drawings)
+            }
             if (attached.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 FlowRow(
@@ -755,10 +832,12 @@ fun NoteDialog(
     initialLabelIds: List<String> = emptyList(),
     initialReminderAt: Long? = null,
     initialRepeat: String? = null,
+    initialChecklist: List<ChecklistItem>? = null,
+    initialAttachments: List<Attachment> = emptyList(),
     allLabels: List<Label> = emptyList(),
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, List<String>, Long?, String?) -> Unit,
+    onConfirm: (String, String, String, List<String>, Long?, String?, List<ChecklistItem>?, List<Attachment>) -> Unit,
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -776,6 +855,40 @@ fun NoteDialog(
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var pendingDate by remember { mutableStateOf(0L) }
+    // Structured checklist rows; null = plain text body mode.
+    var items by remember { mutableStateOf(initialChecklist?.map { it.copy() }) }
+    // Attachments staged for save (start from the opened note's).
+    val staged = remember { mutableStateListOf(*initialAttachments.toTypedArray()) }
+    var attachError by remember { mutableStateOf<String?>(null) }
+    var viewing by remember { mutableStateOf<Attachment?>(null) }
+    val scope = rememberCoroutineScope()
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(NoteLimits.MAX_ATTACHMENTS),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        attachError = null
+        scope.launch(Dispatchers.IO) {
+            val fresh = mutableListOf<Attachment>()
+            for (uri in uris) {
+                if (staged.size + fresh.size >= NoteLimits.MAX_ATTACHMENTS) break
+                val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (c.moveToFirst() && idx >= 0) c.getString(idx) else null
+                } ?: "photo.jpg"
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: continue
+                processImageBytes(bytes, name)?.let { fresh.add(it) }
+            }
+            withContext(Dispatchers.Main) {
+                if (fresh.isEmpty()) {
+                    attachError = "Those photos could not be read or are too large."
+                } else {
+                    staged.addAll(fresh)
+                }
+            }
+        }
+    }
+    // toChecklistMode + save helpers live below toggleList (they use pushHist).
     // POST_NOTIFICATIONS is asked at reminder-set time; a denial only
     // drops the firing, the in-app overdue state stays.
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -867,6 +980,27 @@ fun NoteDialog(
         b = TextFieldValue(out, TextRange(ls + next.length))
         pushHist(out)
     }
+    fun toChecklistMode() {
+        if (items != null) {
+            val body = items.orEmpty().joinToString("\n") { it.text }
+            items = null
+            b = TextFieldValue(body, TextRange(body.length))
+            pushHist(body)
+            return
+        }
+        val lines = b.text.split("\n")
+            .map { it.replace(Regex("^\\s*-\\s*\\[( |x)\\]\\s*"), "").trimEnd() }
+        val kept = lines.filter { it.isNotBlank() }
+        items = (if (kept.isNotEmpty()) kept else listOf("")).map {
+            ChecklistItem(id = UUID.randomUUID().toString(), text = it)
+        }
+    }
+    fun checklistForSave(): List<ChecklistItem>? =
+        items?.filter { it.text.isNotBlank() }
+            ?.take(NoteLimits.MAX_CHECKLIST_ITEMS)
+            ?.map { it.copy(text = it.text.take(NoteLimits.MAX_CHECKLIST_TEXT)) }
+    fun bodyForSave(): String =
+        checklistForSave()?.joinToString("\n") { it.text } ?: b.text
     // Focus-mode editor: full-screen dim, centered card, title focused.
     // (AlertDialog's stock scrim and sizing bury the editor on big phones.)
     Dialog(
@@ -905,9 +1039,53 @@ fun NoteDialog(
                     label = { Text("Title") }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = b, onValueChange = { b = it; pushHist(it.text) },
-                    label = { Text("Body") }, minLines = 3,
-                    modifier = Modifier.fillMaxWidth())
+                val rows = items
+                if (rows == null) {
+                    OutlinedTextField(value = b, onValueChange = { b = it; pushHist(it.text) },
+                        label = { Text("Body") }, minLines = 3,
+                        modifier = Modifier.fillMaxWidth())
+                } else {
+                    Column {
+                        for (item in rows) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = item.checked,
+                                    onCheckedChange = { checked ->
+                                        items = rows.map {
+                                            if (it.id == item.id) it.copy(checked = checked) else it
+                                        }
+                                    },
+                                )
+                                OutlinedTextField(
+                                    value = item.text,
+                                    onValueChange = { text ->
+                                        items = rows.map {
+                                            if (it.id == item.id) it.copy(text = text) else it
+                                        }
+                                    },
+                                    placeholder = { Text("List item") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = {
+                                    items = rows.filter { it.id != item.id }
+                                }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete item")
+                                }
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                if (rows.size < NoteLimits.MAX_CHECKLIST_ITEMS) {
+                                    items = rows + ChecklistItem(
+                                        id = UUID.randomUUID().toString(), text = "",
+                                    )
+                                }
+                            },
+                            enabled = rows.size < NoteLimits.MAX_CHECKLIST_ITEMS,
+                        ) { Text("+ Add item") }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -952,10 +1130,67 @@ fun NoteDialog(
                     TextButton(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            toChecklistMode()
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Checks", maxLines = 1, fontSize = 12.sp) }
+                    TextButton(
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            if (staged.size < NoteLimits.MAX_ATTACHMENTS) {
+                                photoPicker.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                    ),
+                                )
+                            } else {
+                                attachError = "At most ${NoteLimits.MAX_ATTACHMENTS} photos per note."
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Photo", maxLines = 1, fontSize = 12.sp) }
+                    TextButton(
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             drawOpen = true
                         },
                         modifier = Modifier.weight(1f),
                     ) { Text("Draw", maxLines = 1, fontSize = 12.sp) }
+                }
+                if (staged.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (a in staged.toList()) {
+                            val thumb = remember(a.thumbUrl) {
+                                attachmentBitmap(a.thumbUrl)?.asImageBitmap()
+                            }
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                if (thumb != null) {
+                                    Image(
+                                        bitmap = thumb,
+                                        contentDescription = a.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(72.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { viewing = a },
+                                    )
+                                } else {
+                                    Text(a.name, fontSize = 11.sp)
+                                }
+                                TextButton(
+                                    onClick = { staged.remove(a) },
+                                    modifier = Modifier.size(28.dp),
+                                ) { Text("×", fontSize = 12.sp) }
+                            }
+                        }
+                    }
+                }
+                attachError?.let { err ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(err, fontSize = 12.sp, color = Color(0xFFE5534B))
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1107,7 +1342,10 @@ fun NoteDialog(
                             Spacer(Modifier.width(8.dp))
                             TextButton(onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                onConfirm(t, b.text, c, selIds.toList(), reminder, repeatSel)
+                                onConfirm(
+                                    t, bodyForSave(), c, selIds.toList(), reminder, repeatSel,
+                                    checklistForSave(), staged.toList(),
+                                )
                             }) { Text("Save") }
                         }
                     }
@@ -1123,6 +1361,33 @@ fun NoteDialog(
                 drawOpen = false
             },
         )
+    }
+    viewing?.let { current ->
+        Dialog(onDismissRequest = { viewing = null }) {
+            Card(shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    val full = remember(current.dataUrl) {
+                        attachmentBitmap(current.dataUrl)?.asImageBitmap()
+                    }
+                    if (full != null) {
+                        Image(
+                            bitmap = full,
+                            contentDescription = current.name,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(current.name, fontSize = 12.sp, color = Color.Gray)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        TextButton(onClick = { viewing = null }) { Text("Close") }
+                    }
+                }
+            }
+        }
     }
     if (showDate) {
         val dateState = rememberDatePickerState(

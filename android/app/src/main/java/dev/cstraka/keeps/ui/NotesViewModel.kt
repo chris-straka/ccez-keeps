@@ -9,12 +9,16 @@ import dev.cstraka.keeps.data.toDrawing
 import dev.cstraka.keeps.data.toLabel
 import dev.cstraka.keeps.data.toNote
 import dev.cstraka.keeps.sync.ApiException
+import dev.cstraka.keeps.sync.Attachment
+import dev.cstraka.keeps.sync.ChecklistItem
 import dev.cstraka.keeps.sync.Drawing
 import dev.cstraka.keeps.sync.DrawingStroke
 import dev.cstraka.keeps.sync.KeepsApi
 import dev.cstraka.keeps.sync.Label
 import dev.cstraka.keeps.sync.Note
+import dev.cstraka.keeps.sync.NoteLimits
 import dev.cstraka.keeps.sync.ReminderWorker
+import dev.cstraka.keeps.sync.isNote
 import dev.cstraka.keeps.sync.SyncEngine
 import dev.cstraka.keeps.sync.SyncStatus
 import dev.cstraka.keeps.sync.SyncWorker
@@ -161,20 +165,42 @@ class NotesViewModel(
         labelIds: List<String> = emptyList(),
         reminderAt: Long? = null,
         repeat: String? = null,
+        checklist: List<ChecklistItem>? = null,
+        attachments: List<Attachment> = emptyList(),
     ) = viewModelScope.launch {
-        if (title.isBlank() && body.isBlank() && labelIds.isEmpty() && reminderAt == null) return@launch
-        val note = store.create(title, body, labelIds.take(20), reminderAt, repeat)
+        val items = checklist?.take(NoteLimits.MAX_CHECKLIST_ITEMS).orEmpty()
+        val files = attachments.take(NoteLimits.MAX_ATTACHMENTS)
+        if (title.isBlank() && body.isBlank() && labelIds.isEmpty() && reminderAt == null &&
+            items.isEmpty() && files.isEmpty()
+        ) return@launch
+        val note = store.create(
+            title, body, labelIds.take(20), reminderAt, repeat,
+            checklist?.take(NoteLimits.MAX_CHECKLIST_ITEMS), files,
+        )
         if (reminderAt != null) {
             ReminderWorker.schedule(app, note.id, note.title, note.body, reminderAt, repeat)
         }
         touch()
     }
 
-    fun save(note: Note, title: String, body: String, color: String) = viewModelScope.launch {
+    fun save(
+        note: Note,
+        title: String,
+        body: String,
+        color: String,
+        checklist: List<ChecklistItem>? = null,
+        attachments: List<Attachment> = emptyList(),
+    ) = viewModelScope.launch {
         val current = store.all().firstOrNull { it.id == note.id } ?: note
-        val updated = current.copy(title = title, body = body, color = color, updatedAt = now())
-        store.put(updated)
-        refreshReminder(updated)
+        val candidate = current.copy(
+            title = title, body = body, color = color,
+            checklist = checklist?.take(NoteLimits.MAX_CHECKLIST_ITEMS),
+            attachments = attachments.take(NoteLimits.MAX_ATTACHMENTS),
+            updatedAt = now(),
+        )
+        if (!isNote(candidate)) return@launch
+        store.put(candidate)
+        refreshReminder(candidate)
         editing.value = null
         touch()
     }

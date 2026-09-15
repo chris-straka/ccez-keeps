@@ -2,6 +2,8 @@ package dev.cstraka.keeps.data
 
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import dev.cstraka.keeps.sync.Attachment
+import dev.cstraka.keeps.sync.ChecklistItem
 import dev.cstraka.keeps.sync.Drawing
 import dev.cstraka.keeps.sync.DrawingStroke
 import dev.cstraka.keeps.sync.Label
@@ -39,10 +41,13 @@ class LocalStore(
         labelIds: List<String> = emptyList(),
         reminderAt: Long? = null,
         repeat: String? = null,
+        checklist: List<ChecklistItem>? = null,
+        attachments: List<Attachment> = emptyList(),
     ): Note {
         val note = newNote(
             id = UUID.randomUUID().toString(), title = title, body = body,
             labelIds = labelIds, reminderAt = reminderAt, repeat = repeat,
+            checklist = checklist, attachments = attachments,
         )
         put(note)
         return note

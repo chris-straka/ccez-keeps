@@ -11,7 +11,7 @@
     "dev:worker": "bunx wrangler dev"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.13.8",
     "idb": "^8.0.3"
   },

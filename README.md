@@ -49,6 +49,11 @@ wrangler d1 migrations apply DB --local
 wrangler dev --local --port 8787
 ```
 
+Bun owns installs (`bun.lock` is canonical). `package-lock.json` exists
+only so Dependabot's npm updater can parse the tree — regenerate it with
+`npm install --package-lock-only` after changing dependencies, and never
+`npm install` it into `node_modules`.
+
 Remote D1 (already migrated for the initial schema):
 
 ```sh

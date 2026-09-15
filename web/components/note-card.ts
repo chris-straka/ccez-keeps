@@ -28,6 +28,41 @@ export function formatReminder(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
+const CHECKLIST_PREVIEW_LIMIT = 5;
+const ATTACHMENT_PREVIEW_LIMIT = 3;
+
+/** Read-only item rows for the card; "" when the note is not a checklist. */
+export function renderChecklistPreview(
+  checklist: Note["checklist"],
+): string {
+  if (!checklist) return "";
+  const rows = checklist.slice(0, CHECKLIST_PREVIEW_LIMIT).map(
+    (item) => `
+      <div class="check-row is-preview${item.checked ? " is-checked" : ""}">
+        <span class="check" aria-hidden="true">${item.checked ? "☑" : "☐"}</span>
+        <span class="check-preview-text">${escapeHtml(item.text) || "&nbsp;"}</span>
+      </div>`,
+  );
+  const extra = checklist.length - CHECKLIST_PREVIEW_LIMIT;
+  return `<div class="card-checklist">${rows.join("")}${
+    extra > 0 ? `<div class="check-more">+${extra} more</div>` : ""
+  }</div>`;
+}
+
+/** Thumbnail strip for the card; "" when there are no attachments. */
+export function renderAttachmentPreview(attachments: Note["attachments"]): string {
+  const list = attachments ?? [];
+  if (list.length === 0) return "";
+  const thumbs = list.slice(0, ATTACHMENT_PREVIEW_LIMIT).map(
+    (a) =>
+      `<img class="card-thumb" src="${escapeHtml(a.thumbUrl)}" alt="${escapeHtml(a.name)}" loading="lazy" />`,
+  );
+  const extra = list.length - ATTACHMENT_PREVIEW_LIMIT;
+  return `<div class="card-thumbs">${thumbs.join("")}${
+    extra > 0 ? `<span class="thumb-more">+${extra}</span>` : ""
+  }</div>`;
+}
+
 export class NoteCard extends HTMLElement {
   private current: Note | undefined;
   private names: Record<string, string> = {};
@@ -100,9 +135,12 @@ export class NoteCard extends HTMLElement {
       note.reminderAt === null
         ? ""
         : `<div class="reminder${isOverdue(note) ? " is-overdue" : ""}">Reminds ${escapeHtml(formatReminder(note.reminderAt))}${repeatSuffix}</div>`;
+    const checklist = renderChecklistPreview(note.checklist);
+    const attachments = renderAttachmentPreview(note.attachments);
     this.innerHTML = `
       <div class="card-title">${escapeHtml(note.title) || "&nbsp;"}</div>
-      <div class="card-body">${renderBody(note.body)}</div>
+      ${attachments}
+      ${checklist || `<div class="card-body">${renderBody(note.body)}</div>`}
       ${chips ? `<div class="label-chips">${chips}</div>` : ""}
       ${reminder}
       <div class="card-actions">

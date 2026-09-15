@@ -257,6 +257,130 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("structured checklist edits, adds, and saves with a body fallback", async () => {
+    const t = mount([
+      note({
+        id: "1",
+        title: "Shop",
+        body: "milk\neggs",
+        checklist: [
+          { id: "c1", text: "milk", checked: false },
+          { id: "c2", text: "eggs", checked: true },
+        ],
+      }),
+    ]);
+    await t.ready;
+    t.cards()[0]?.querySelector(".card-checklist")!.dispatchEvent(
+      new Event("click", { bubbles: true }),
+    );
+    await t.tick();
+    // Item rows render instead of the textarea.
+    expect(t.app.querySelector(".editor-body")).toBeNull();
+    const rows = [...t.app.querySelectorAll<HTMLInputElement>(".check-text")];
+    expect(rows.map((r) => r.value)).toEqual(["milk", "eggs"]);
+    // Toggle the first item, rename the second, add a third.
+    const first = t.app.querySelectorAll<HTMLInputElement>(".check-toggle")[0]!;
+    first.checked = true;
+    first.dispatchEvent(new Event("change", { bubbles: true }));
+    rows[1]!.value = "free-range eggs";
+    rows[1]!.dispatchEvent(new Event("input", { bubbles: true }));
+    t.app.querySelector<HTMLButtonElement>('[data-action="check-add"]')!.click();
+    const fresh = [...t.app.querySelectorAll<HTMLInputElement>(".check-text")];
+    fresh[2]!.value = "bread";
+    fresh[2]!.dispatchEvent(new Event("input", { bubbles: true }));
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    const saved = await t.store.get("1");
+    expect(saved?.checklist).toEqual([
+      { id: "c1", text: "milk", checked: true },
+      { id: "c2", text: "free-range eggs", checked: true },
+      { id: expect.any(String), text: "bread", checked: false },
+    ]);
+    // Body fallback keeps older clients readable.
+    expect(saved?.body).toBe("milk\nfree-range eggs\nbread");
+    t.cleanup();
+  });
+
+  test("checklist mode converts body lines to items and back", async () => {
+    const t = mount([note({ id: "1", title: "Shop", body: "milk\n\neggs" })]);
+    await t.ready;
+    t.cards()[0]?.querySelector(".card-body")!.dispatchEvent(
+      new Event("click", { bubbles: true }),
+    );
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-action="checklist-mode"]')!.click();
+    expect(
+      [...t.app.querySelectorAll<HTMLInputElement>(".check-text")].map((r) => r.value),
+    ).toEqual(["milk", "eggs"]);
+    t.app.querySelector<HTMLButtonElement>('[data-action="checklist-mode"]')!.click();
+    expect(t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value).toBe(
+      "milk\neggs",
+    );
+    t.cleanup();
+  });
+
+  test("card previews checklist rows and attachment thumbs", async () => {
+    const items = Array.from({ length: 7 }, (_, i) => ({
+      id: `c${i}`,
+      text: `item ${i}`,
+      checked: i === 0,
+    }));
+    const t = mount([
+      note({
+        id: "1",
+        title: "Trip",
+        body: "fallback",
+        checklist: items,
+        attachments: [
+          {
+            id: "a1",
+            name: "beach.png",
+            mime: "image/png",
+            size: 4,
+            dataUrl: "data:image/png;base64,iVBORw==",
+            thumbUrl: "data:image/png;base64,iVBORw==",
+          },
+        ],
+      }),
+    ]);
+    await t.ready;
+    const card = t.cards()[0]!;
+    // Structured preview replaces the body fallback.
+    expect(card.querySelector(".card-body")).toBeNull();
+    expect(card.querySelectorAll(".card-checklist .check-row")).toHaveLength(5);
+    expect(card.querySelector(".check-more")?.textContent).toBe("+2 more");
+    expect(
+      card.querySelector(".check-row.is-checked .check-preview-text")?.textContent,
+    ).toBe("item 0");
+    const thumb = card.querySelector(".card-thumb") as HTMLImageElement;
+    expect(thumb?.src).toBe("data:image/png;base64,iVBORw==");
+    expect(thumb?.alt).toBe("beach.png");
+    t.cleanup();
+  });
+
+  test("editor stages existing attachments and removes one on save", async () => {
+    const a1 = {
+      id: "a1",
+      name: "one.png",
+      mime: "image/png",
+      size: 4,
+      dataUrl: "data:image/png;base64,iVBORw==",
+      thumbUrl: "data:image/png;base64,iVBORw==",
+    };
+    const a2 = { ...a1, id: "a2", name: "two.png" };
+    const t = mount([note({ id: "1", title: "Pics", attachments: [a1, a2] })]);
+    await t.ready;
+    t.cards()[0]?.dispatchEvent(new Event("click", { bubbles: true }));
+    await t.tick();
+    expect(t.app.querySelectorAll(".attach-thumb")).toHaveLength(2);
+    t.app.querySelector<HTMLElement>('[data-attach-del="a1"]')!.click();
+    expect(t.app.querySelectorAll(".attach-thumb")).toHaveLength(1);
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    expect((await t.store.get("1"))?.attachments).toEqual([a2]);
+    t.cleanup();
+  });
+
   test("card renders markdown subset as markup, still escaped", async () => {
     const t = mount([note({ id: "1", title: "t", body: "a **b** and <i>x</i>" })]);
     await t.ready;

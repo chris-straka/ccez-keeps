@@ -322,6 +322,8 @@ export class KeepsApp extends HTMLElement {
       labelIds: note.labelIds,
       reminderAt: note.reminderAt,
       repeat: note.repeat,
+      checklist: note.checklist,
+      attachments: note.attachments,
     });
   }
 
@@ -906,6 +908,8 @@ export class KeepsApp extends HTMLElement {
           labelIds: note.labelIds,
           reminderAt: note.reminderAt,
           repeat: note.repeat,
+          checklist: note.checklist,
+          attachments: note.attachments,
         });
         return;
       }
@@ -946,20 +950,29 @@ export class KeepsApp extends HTMLElement {
     const extras =
       draft.labelIds !== undefined ||
       draft.reminderAt !== undefined ||
-      draft.repeat !== undefined
+      draft.repeat !== undefined ||
+      draft.checklist !== undefined ||
+      draft.attachments !== undefined
         ? {
             ...(draft.labelIds !== undefined ? { labelIds: draft.labelIds } : {}),
             ...(draft.reminderAt !== undefined ? { reminderAt: draft.reminderAt } : {}),
             ...(draft.repeat !== undefined ? { repeat: draft.repeat } : {}),
+            ...(draft.checklist !== undefined ? { checklist: draft.checklist } : {}),
+            ...(draft.attachments !== undefined ? { attachments: draft.attachments } : {}),
           }
         : {};
+    const hasContent =
+      draft.title.trim() !== "" ||
+      draft.body.trim() !== "" ||
+      (draft.checklist ?? []).length > 0 ||
+      (draft.attachments ?? []).length > 0;
     if (this.editingId) {
       const existing = await store.get(this.editingId);
       this.editingId = null;
       if (!existing) return;
       await store.put({ ...existing, ...draft, ...extras, updatedAt: Date.now() });
     } else {
-      if (draft.title.trim() === "" && draft.body.trim() === "") return;
+      if (!hasContent) return;
       await store.put(newNote({ id: crypto.randomUUID(), ...draft, ...extras }));
     }
     buzz("confirm");

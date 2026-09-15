@@ -6,9 +6,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import org.junit.Assert.assertEquals
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.cstraka.keeps.data.processImageBytes
@@ -85,7 +87,7 @@ class ChecklistAttachmentsUiTest {
         }
         compose.onNodeWithText("item 0").assertIsDisplayed()
         compose.onNodeWithText("+2 more").assertIsDisplayed()
-        compose.onAllNodesWithText("fallback").assertCountEquals(0)
+        assertEquals(0, compose.onAllNodesWithText("fallback").fetchSemanticsNodes().size)
         compose.onNodeWithContentDescription("beach.png").assertIsDisplayed()
     }
 
@@ -116,17 +118,18 @@ class ChecklistAttachmentsUiTest {
         }
         // Checklist rows render instead of the body field.
         compose.onNodeWithText("milk").assertIsDisplayed()
-        compose.onAllNodesWithText("milk\neggs").assertCountEquals(0)
+        assertEquals(0, compose.onAllNodesWithText("milk\neggs").fetchSemanticsNodes().size)
         // Toggle the first item, rename the second, save.
         compose.onAllNodes(isToggleable())[0].performClick()
-        compose.onNodeWithText("eggs").performTextInput(" (free-range)")
+        compose.onNodeWithText("eggs").performTextClearance()
+        compose.onNodeWithText("").performTextInput("free-range eggs")
         compose.onNodeWithText("Save").performClick()
 
         val got = savedChecklist ?: throw AssertionError("checklist was not saved")
         assert(got.size == 2) { "expected 2 items, got ${got.size}" }
         assert(got[0].checked) { "first item should be checked" }
-        assert(got[1].text == "eggs (free-range)") { "rename lost: ${got[1].text}" }
-        assert(savedBody == "milk\neggs (free-range)") { "body fallback wrong: $savedBody" }
+        assert(got[1].text == "free-range eggs") { "rename lost: ${got[1].text}" }
+        assert(savedBody == "milk\nfree-range eggs") { "body fallback wrong: $savedBody" }
         assert(savedAttachments?.map { it.id } == listOf("a1")) { "attachments lost" }
     }
 

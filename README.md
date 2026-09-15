@@ -1,4 +1,4 @@
-# ccez-keeps
+# [ccez-keeps](https://github.com/chris-straka/ccez-keeps)
 
 A fast Google Keep clone: vanilla TS + Web Components SPA, local-first
 (IndexedDB), syncing to Cloudflare Workers + D1, gated by Cloudflare Access.

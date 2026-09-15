@@ -198,7 +198,10 @@ class NotesViewModel(
         } else {
             bucketed
         }
-        val visible = rankNotes(core.basics.q, ordered)
+        val visible = rankNotes(
+            core.basics.q, ordered,
+            liveLabels.associate { it.id to it.name },
+        )
         NotesUiState(
             visible, core.basics.q, core.basics.f, core.ephemera.status,
             core.ephemera.ed, core.ephemera.delErr, core.basics.drawings, liveLabels, lf,

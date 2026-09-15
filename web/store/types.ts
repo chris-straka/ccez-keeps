@@ -21,7 +21,7 @@ export interface Store {
   /** All rows including tombstones (sync + views build on this). */
   all(): Promise<Note[]>;
   list(view: NoteView): Promise<Note[]>;
-  search(query: string, view: NoteView): Promise<Note[]>;
+  search(query: string, view: NoteView, labelNames?: Record<string, string>): Promise<Note[]>;
   get(id: string): Promise<Note | undefined>;
   put(note: Note): Promise<void>;
   /** Soft delete: writes a tombstone with fresh updatedAt. */

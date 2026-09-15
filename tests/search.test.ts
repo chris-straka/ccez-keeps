@@ -103,4 +103,20 @@ describe("rankNotes", () => {
     ];
     expect(rankNotes(notes, "eggs").map((n) => n.id)).toEqual(["1"]);
   });
+
+  test("label names match in the extras tier, dangling ids stay inert", () => {
+    const notes = [
+      note({ id: "tagged", title: "t", body: "b", labelIds: ["l1"], updatedAt: 1000 }),
+      note({ id: "dangling", title: "t", body: "b", labelIds: ["gone"], updatedAt: 2000 }),
+      note({ id: "body", title: "t", body: "weekend errands", updatedAt: 500 }),
+      note({ id: "none", title: "t", body: "b", updatedAt: 3000 }),
+    ];
+    const names = { l1: "Weekend" };
+    expect(rankNotes(notes, "weekend", names).map((n) => n.id)).toEqual([
+      "body",
+      "tagged",
+    ]);
+    // Without the name map the tagged note does not match.
+    expect(rankNotes(notes, "weekend").map((n) => n.id)).toEqual(["body"]);
+  });
 });

@@ -51,6 +51,19 @@ class SearchTest {
     }
 
     @Test
+    fun labelNamesMatchInExtrasTierAndDanglingIdsStayInert() {
+        val notes = listOf(
+            newNote(id = "tagged", title = "t", body = "b", labelIds = listOf("l1"), updatedAt = 100L),
+            newNote(id = "dangling", title = "t", body = "b", labelIds = listOf("gone"), updatedAt = 200L),
+            newNote(id = "body", title = "t", body = "weekend errands", updatedAt = 50L),
+            newNote(id = "none", title = "t", body = "b", updatedAt = 300L),
+        )
+        val names = mapOf("l1" to "Weekend")
+        assertEquals(listOf("body", "tagged"), rankNotes("weekend", notes, names).map { it.id })
+        assertEquals(listOf("body"), rankNotes("weekend", notes).map { it.id })
+    }
+
+    @Test
     fun checklistAndAttachmentNamesMatchBelowBody() {
         val notes = listOf(
             newNote(

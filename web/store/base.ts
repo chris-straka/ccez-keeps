@@ -49,8 +49,12 @@ export abstract class BaseStore implements Store {
     return filtered.sort(compareNotes);
   }
 
-  async search(query: string, view: NoteView): Promise<Note[]> {
-    return rankNotes(await this.list(view), query);
+  async search(
+    query: string,
+    view: NoteView,
+    labelNames: Record<string, string> = {},
+  ): Promise<Note[]> {
+    return rankNotes(await this.list(view), query, labelNames);
   }
 
   async get(id: string): Promise<Note | undefined> {

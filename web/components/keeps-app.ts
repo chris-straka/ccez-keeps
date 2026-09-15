@@ -382,7 +382,7 @@ export class KeepsApp extends HTMLElement {
       this.activeLabelId = null;
     }
     const found = this.query
-      ? await store.search(this.query, this.view)
+      ? await store.search(this.query, this.view, this.labelNameMap())
       : await store.list(this.view);
     const notes = this.applyLabelFilter(found);
     const doc = this.ownerDocument;
@@ -880,7 +880,7 @@ export class KeepsApp extends HTMLElement {
   private async refreshGridOnly(): Promise<void> {
     const store = this.requireStore();
     const found = this.query
-      ? await store.search(this.query, this.view)
+      ? await store.search(this.query, this.view, this.labelNameMap())
       : await store.list(this.view);
     this.renderGrid(this.applyLabelFilter(found));
   }

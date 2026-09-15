@@ -228,6 +228,8 @@ fun NotesScreen(
     settingsBusy: Boolean = false,
     theme: ThemeMode = ThemeMode.DARK,
     onTheme: (ThemeMode) -> Unit = {},
+    appVersion: String = "",
+    onUpdate: () -> Unit = {},
 ) {
     val drawer = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -541,6 +543,15 @@ fun NotesScreen(
                         Text("Revoke it anytime from the web app device list.",
                             style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(4.dp))
+                        if (appVersion.isNotBlank()) {
+                            Text("Keeps $appVersion",
+                                style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        TextButton(onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onUpdate()
+                        }) { Text("Get the latest update") }
                         TextButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             settingsOpen = false

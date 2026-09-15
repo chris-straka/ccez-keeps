@@ -57,12 +57,16 @@ jobs:
       - name: Install Android platform
         run: sdkmanager "platforms;android-36"
       - name: Write keystore from secrets (optional)
-        # Skipped when the secrets are unset: app/build.gradle.kts falls
-        # back to a debug-signed release build in that case.
-        if: secrets.KEEPS_KEYSTORE_BASE64 != ''
+        # No `if:` on secrets here: the secrets context is not available
+        # in step conditions, so the shell branches instead. When unset,
+        # app/build.gradle.kts falls back to a debug-signed release build.
         env:
           KEEPS_KEYSTORE_BASE64: ${{ secrets.KEEPS_KEYSTORE_BASE64 }}
         run: |
+          if [ -z "$KEEPS_KEYSTORE_BASE64" ]; then
+            echo "No keystore secret; release build will be debug-signed."
+            exit 0
+          fi
           echo "$KEEPS_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keeps-release.jks"
           echo "KEEPS_KEYSTORE_PATH=$RUNNER_TEMP/keeps-release.jks" >> "$GITHUB_ENV"
       - name: Unit tests + signed release APK
@@ -72,10 +76,12 @@ jobs:
           KEEPS_KEY_PASSWORD: ${{ secrets.KEEPS_KEY_PASSWORD }}
         run: ./gradlew :synclogic:test :app:assembleRelease
       - name: Upload APK as workflow artifact
+        # NOTE: uses-steps ignore defaults.run.working-directory, so this
+        # path is repo-relative, not android-relative.
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
   # Serial tail: the SOLE writer to the release. Runs only after the

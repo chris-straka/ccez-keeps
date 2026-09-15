@@ -1,7 +1,9 @@
 package dev.cstraka.keeps
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -94,6 +96,8 @@ class MainActivity : ComponentActivity() {
                     settingsBusy = settingsBusy,
                     theme = theme,
                     onTheme = notesModel::setTheme,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    onUpdate = { openUpdatePage() },
                 )
             }
         }
@@ -123,6 +127,20 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_COMPOSE = "dev.cstraka.keeps.EXTRA_COMPOSE"
+
+        /** Update entry point shown in Settings (always the newest release). */
+        const val LATEST_RELEASE_URL =
+            "https://github.com/chris-straka/ccez-keeps/releases/latest"
+    }
+
+    /** Latest release page in a Custom Tab (same browser UX as enrollment). */
+    private fun openUpdatePage() {
+        try {
+            CustomTabsIntent.Builder().build()
+                .launchUrl(this, Uri.parse(LATEST_RELEASE_URL))
+        } catch (e: Exception) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LATEST_RELEASE_URL)))
+        }
     }
 
     private fun signOut() {

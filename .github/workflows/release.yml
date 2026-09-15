@@ -163,24 +163,28 @@ jobs:
           import json
           import os
           import subprocess
+          # This job has no checkout, so every gh call names the repo
+          # explicitly (-R) instead of relying on git remote discovery.
+          repo = os.environ["GITHUB_REPOSITORY"]
+
           def query_releases():
               """Newest-first release list, CLI first with REST fallback."""
               try:
                   out = subprocess.run(
-                      ["gh", "release", "list",
+                      ["gh", "release", "list", "-R", repo,
                        "--json", "tagName,createdAt", "--limit", "100"],
                       capture_output=True, text=True, check=True,
                   )
                   return json.loads(out.stdout)
               except subprocess.CalledProcessError as e:
                   print("gh release list failed; stderr:", e.stderr.strip(), flush=True)
-              repo = os.environ["GITHUB_REPOSITORY"]
               out = subprocess.run(
                   ["gh", "api", f"repos/{repo}/releases",
                    "--paginate", "-q", ".[] | {tagName: .tag_name, createdAt: .created_at}"],
                   capture_output=True, text=True, check=True,
               )
-              return json.loads(out.stdout)
+              # -q prints one object per line, not an array.
+              return [json.loads(line) for line in out.stdout.splitlines() if line.strip()]
 
           cur = os.environ["GITHUB_REF_NAME"]
           older = sorted(
@@ -190,7 +194,7 @@ jobs:
           for r in older[1:]:
               print("Deleting old release:", r["tagName"], flush=True)
               subprocess.run(
-                  ["gh", "release", "delete", r["tagName"],
+                  ["gh", "release", "delete", "-R", repo, r["tagName"],
                    "--cleanup-tag", "-y"],
                   check=True,
               )

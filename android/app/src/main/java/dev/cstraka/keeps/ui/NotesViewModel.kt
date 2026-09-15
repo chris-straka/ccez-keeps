@@ -85,6 +85,20 @@ class NotesViewModel(
         _composerOpen.value = open
     }
 
+    /**
+     * Text shared in from another app. First line becomes the title when
+     * multiline (links + commentary pattern); otherwise the whole text is
+     * the body. Caller gates on enrollment.
+     */
+    fun importShared(text: String) = viewModelScope.launch {
+        val clean = text.trim().take(100_000)
+        if (clean.isEmpty()) return@launch
+        val nl = clean.indexOf('\n')
+        val title = if (nl == -1) "" else clean.substring(0, nl).trim().take(200)
+        val body = if (nl == -1) clean else clean.substring(nl + 1).trim()
+        create(title, body)
+    }
+
     // combine() tops out at 5 flows, so fold 7 inputs through a quad and
     // a triple.
     private data class Basics(
@@ -133,6 +147,11 @@ class NotesViewModel(
     fun setFilter(f: NoteFilter) { filter.value = f }
     fun setLabelFilter(id: String?) { labelFilter.value = id }
     fun openEditor(note: Note?) { editing.value = note }
+
+    /** Widget/notification entry points that only know an id. */
+    fun openNoteById(id: String) = viewModelScope.launch {
+        store.noteById(id)?.let { openEditor(it) }
+    }
     fun closeEditor() { editing.value = null }
     fun clearDeleteError() { deleteError.value = false }
 

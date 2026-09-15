@@ -887,6 +887,19 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
+  test("due reminder toasts once; View opens the note", async () => {
+    const t = mount([note({ id: "1", title: "Call", reminderAt: Date.now() - 1000 })]);
+    await t.ready;
+    await t.tick();
+    await t.tick();
+    expect(t.app.querySelector(".toast")?.textContent).toContain("Reminder: Call");
+    t.app.querySelector<HTMLButtonElement>('[data-toast="view"]')!.click();
+    await t.tick();
+    await t.tick();
+    expect(t.app.querySelector("note-editor")).not.toBeNull();
+    t.cleanup();
+  });
+
   test("past reminder renders overdue style; clearing the field removes it", async () => {
     const t = await mountWithLabels([
       note({ id: "1", title: "Late", reminderAt: 1000 }),

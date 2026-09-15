@@ -67,10 +67,15 @@ export class KeepsApp extends HTMLElement {
   private devices: DevicesClient | undefined;
   private devicesOpen = false;
   private devicesCache: DeviceInfo[] | null = null;
-  private toast: { message: string; undo: boolean } | null = null;
+  private toast: { message: string; undo: boolean; viewId?: string } | null = null;
   private pendingDelete: Note | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private undoMs = 6_000;
+  private dueFired = new Set<string>();
+  private dueTimer: number | undefined;
+  private onVisible = (): void => {
+    if (!this.ownerDocument.hidden) void this.checkDueNow();
+  };
   private labels: LabelsStore | undefined;
   private labelCache: Label[] = [];
   private activeLabelId: string | null = null;
@@ -93,6 +98,10 @@ export class KeepsApp extends HTMLElement {
     this.labelsUnsub = this.labels.subscribe(() => {
       void this.refresh();
     });
+    // Due-reminder watch: the web has no background path, so check on
+    // every render plus a 30s tick and tab refocus while open.
+    this.dueTimer = window.setInterval(() => void this.checkDueNow(), 30_000);
+    this.ownerDocument.addEventListener("visibilitychange", this.onVisible);
     this.addEventListener("card-action", (event) => {
       const { id, kind } = (event as CustomEvent).detail as {
         id: string;
@@ -185,6 +194,11 @@ export class KeepsApp extends HTMLElement {
     this.clearToastTimer();
     this.unsub?.();
     this.labelsUnsub?.();
+    if (this.dueTimer !== undefined) {
+      window.clearInterval(this.dueTimer);
+      this.dueTimer = undefined;
+    }
+    this.ownerDocument.removeEventListener("visibilitychange", this.onVisible);
   }
 
   private requireLabels(): LabelsStore {
@@ -233,7 +247,9 @@ export class KeepsApp extends HTMLElement {
     if (!this.toast) return "";
     const action = this.toast.undo
       ? `<button data-toast="undo">Undo</button>`
-      : "";
+      : this.toast.viewId
+        ? `<button data-toast="view" data-id="${escapeHtml(this.toast.viewId)}">View</button>`
+        : "";
     return `<div class="toast" role="status"><span>${escapeHtml(this.toast.message)}</span>${action}</div>`;
   }
 
@@ -262,6 +278,51 @@ export class KeepsApp extends HTMLElement {
     this.pendingDelete = deleted;
     this.renderToast();
     this.toastTimer = setTimeout(() => this.dismissToast(), this.undoMs);
+  }
+
+  /** Notes whose reminders are due and not yet announced. */
+  private async checkDueNow(): Promise<void> {
+    const store = this.requireStore();
+    const notes = (await store.list("notes")).concat(await store.list("archive"));
+    this.checkDue(notes);
+  }
+
+  private checkDue(notes: Note[]): void {
+    const now = Date.now();
+    const due = notes
+      .filter(
+        (n) =>
+          !n.deleted &&
+          n.reminderAt !== null &&
+          n.reminderAt <= now &&
+          !this.dueFired.has(`${n.id}@${n.reminderAt}`),
+      )
+      .sort((a, b) => (b.reminderAt ?? 0) - (a.reminderAt ?? 0));
+    const first = due[0];
+    if (!first?.reminderAt) return;
+    this.dueFired.add(`${first.id}@${first.reminderAt}`);
+    this.clearToastTimer();
+    this.toast = {
+      message: `Reminder: ${first.title || "Untitled note"}`,
+      undo: false,
+      viewId: first.id,
+    };
+    this.pendingDelete = null;
+    this.renderToast();
+    this.toastTimer = setTimeout(() => this.dismissToast(), 10_000);
+  }
+
+  private async openNoteById(id: string): Promise<void> {
+    const note = await this.requireStore().get(id);
+    if (!note || note.deleted) return;
+    this.openEditor(id, {
+      title: note.title,
+      body: note.body,
+      color: note.color,
+      labelIds: note.labelIds,
+      reminderAt: note.reminderAt,
+      repeat: note.repeat,
+    });
   }
 
   private async onUndoDelete(): Promise<void> {
@@ -336,6 +397,7 @@ export class KeepsApp extends HTMLElement {
     void this.paintDrawings().catch((error) => {
       console.error("[keeps] paint drawings failed:", error);
     });
+    void this.checkDueNow();
     if (searchHadFocus) {
       const input = this.querySelector<HTMLInputElement>(".search");
       input?.focus();
@@ -742,8 +804,13 @@ export class KeepsApp extends HTMLElement {
     }
     const toastBtn = target.closest("[data-toast]");
     if (toastBtn) {
-      if ((toastBtn as HTMLElement).dataset["toast"] === "undo") {
+      const kind = (toastBtn as HTMLElement).dataset["toast"];
+      if (kind === "undo") {
         void this.onUndoDelete();
+      } else if (kind === "view") {
+        const id = (toastBtn as HTMLElement).dataset["id"] ?? "";
+        this.dismissToast();
+        if (id) void this.openNoteById(id);
       } else {
         this.dismissToast();
       }

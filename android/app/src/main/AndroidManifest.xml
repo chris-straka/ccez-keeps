@@ -38,6 +38,17 @@
             android:name=".sync.SnoozeReceiver"
             android:exported="false" />
 
+        <!-- Settings export shares a JSON backup through a one-shot URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/filepaths" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -54,6 +65,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="keeps" android:host="enroll" />
             </intent-filter>
+            <!-- Receive shared text from any app as a new note. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <receiver
@@ -67,5 +84,12 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_quick_capture_info" />
         </receiver>
+
+        <!-- Widget tap-target picker (blank note or one chosen note). -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

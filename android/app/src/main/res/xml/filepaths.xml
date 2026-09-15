@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Export target: app-private cache, shared one shot via chooser. -->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

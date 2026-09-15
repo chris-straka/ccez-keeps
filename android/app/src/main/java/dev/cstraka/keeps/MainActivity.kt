@@ -14,7 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import dev.cstraka.keeps.sync.exportNotes
 import dev.cstraka.keeps.ui.EnrollScreen
+import kotlinx.coroutines.launch
 import dev.cstraka.keeps.ui.EnrollViewModel
 import dev.cstraka.keeps.ui.NotesScreen
 import dev.cstraka.keeps.ui.NotesViewModel
@@ -46,6 +49,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleDeepLink(intent)
         handleComposeExtra(intent)
+        handleSharedText(intent)
         setContent {
             val enrolled = remember(enrolledVersion.value) { app.authStore.isEnrolled }
             val theme by notesModel.theme.collectAsState()
@@ -98,6 +102,7 @@ class MainActivity : ComponentActivity() {
                     onTheme = notesModel::setTheme,
                     appVersion = BuildConfig.VERSION_NAME,
                     onUpdate = { openUpdatePage() },
+                    onExport = { shareExport() },
                 )
             }
         }
@@ -108,11 +113,47 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleDeepLink(intent)
         handleComposeExtra(intent)
+        handleSharedText(intent)
+    }
+
+    /** Shared text from any app becomes a note (enrolled only). Consumed once. */
+    private fun handleSharedText(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        if (intent.type?.startsWith("text/") != true) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.action = null
+        if (!app.authStore.isEnrolled) return
+        notesModel.importShared(text)
+    }
+
+    /** Backup JSON through the system share sheet (same shape as web export). */
+    private fun shareExport() {
+        lifecycleScope.launch {
+            val json = exportNotes(app.localStore.all())
+            val dir = java.io.File(cacheDir, "exports").apply { mkdirs() }
+            val file = java.io.File(dir, "keeps-export.json")
+            file.writeText(json)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this@MainActivity, "${packageName}.fileprovider", file,
+            )
+            val send = Intent(Intent.ACTION_SEND)
+                .setType("application/json")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(Intent.createChooser(send, "Export notes"))
+        }
     }
 
     private fun handleComposeExtra(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_COMPOSE, false) == true) {
             intent.removeExtra(EXTRA_COMPOSE)
+            // Widget with a configured note opens it; otherwise a composer.
+            intent.getStringExtra(EXTRA_NOTE_ID)?.let { id ->
+                intent.removeExtra(EXTRA_NOTE_ID)
+                if (app.authStore.isEnrolled) notesModel.openNoteById(id)
+                return
+            }
             notesModel.setComposer(true)
         }
     }
@@ -127,6 +168,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_COMPOSE = "dev.cstraka.keeps.EXTRA_COMPOSE"
+        const val EXTRA_NOTE_ID = "dev.cstraka.keeps.EXTRA_NOTE_ID"
 
         /** Update entry point shown in Settings (always the newest release). */
         const val LATEST_RELEASE_URL =

@@ -5,6 +5,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_quick_capture"
     android:previewLayout="@layout/widget_quick_capture"
+    android:configure="dev.cstraka.keeps.widget.WidgetConfigActivity"
     android:description="@string/widget_desc"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

@@ -232,6 +232,7 @@ fun NotesScreen(
     onTheme: (ThemeMode) -> Unit = {},
     appVersion: String = "",
     onUpdate: () -> Unit = {},
+    onExport: () -> Unit = {},
 ) {
     val drawer = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -555,6 +556,10 @@ fun NotesScreen(
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onUpdate()
                         }) { Text("Get the latest update") }
+                        TextButton(onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onExport()
+                        }) { Text("Export notes") }
                         TextButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             settingsOpen = false

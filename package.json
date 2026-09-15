@@ -1,0 +1,26 @@
+{
+  "name": "ccez-keeps",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "db:generate": "bunx drizzle-kit generate",
+    "dev:worker": "bunx wrangler dev"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.7",
+    "hono": "^4.13.8",
+    "idb": "^8.0.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "bun-types": "^1.4.2",
+    "drizzle-kit": "^0.31.10",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.14.5",
+    "typescript": "^5.9.3"
+  }
+}

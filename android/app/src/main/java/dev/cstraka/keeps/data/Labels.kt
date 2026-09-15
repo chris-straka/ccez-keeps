@@ -1,0 +1,74 @@
+package dev.cstraka.keeps.data
+
+import androidx.room.Dao
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import dev.cstraka.keeps.sync.Label
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * Room mirror of the labels amendment (contracts/data.md). Labels sync on
+ * their own lane with an independent cursor; notes reference them by id
+ * with no cascade (dangling ids are inert).
+ */
+@Entity(tableName = "labels")
+data class LabelEntity(
+    @PrimaryKey val id: String,
+    val name: String = "",
+    val color: String = "default",
+    val updatedAt: Long = 0L,
+    val deleted: Int = 0,
+)
+
+fun LabelEntity.toLabel(): Label = Label(
+    id = id, name = name, color = color,
+    updatedAt = updatedAt, deleted = deleted == 1,
+)
+
+fun Label.toEntity(): LabelEntity = LabelEntity(
+    id = id, name = name, color = color,
+    updatedAt = updatedAt, deleted = if (deleted) 1 else 0,
+)
+
+@Dao
+interface LabelDao {
+    @Query("SELECT * FROM labels")
+    fun observeAll(): Flow<List<LabelEntity>>
+
+    @Query("SELECT * FROM labels")
+    suspend fun all(): List<LabelEntity>
+
+    @Query("SELECT * FROM labels WHERE id = :id")
+    suspend fun byId(id: String): LabelEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: LabelEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<LabelEntity>)
+
+    @Query("DELETE FROM labels WHERE id = :id")
+    suspend fun dropLocal(id: String)
+}
+
+/**
+ * v2 -> v3: labels table plus the note label/reminder columns. Notes keep
+ * their rows; new columns default to no labels and no reminder.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `labels` (" +
+                "`id` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                "`color` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                "`deleted` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        )
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `labelIds` TEXT NOT NULL DEFAULT '[]'")
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `reminderAt` INTEGER")
+    }
+}

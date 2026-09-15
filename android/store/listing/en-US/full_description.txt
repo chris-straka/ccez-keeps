@@ -1,0 +1,16 @@
+Keeps is a fast, offline-first notes app in the spirit of Google Keep.
+
+Everything renders from the on-device database first, so your notes are
+visible instantly — even in airplane mode. When you're back online, changes
+sync quietly in the background and converge with your other devices, newest
+edit wins, no duplicates.
+
+• Offline create, edit, delete, and search — syncs on reconnect
+• Checklists, colors, pins, archive, and trash
+• Freehand drawings attached right inside a note
+• Light markdown: bold, italic, strike-through, code
+• Per-device logins you can rename, rotate, or revoke anytime
+• Dark theme, haptic feedback, no ads, no trackers
+
+Keeps syncs through a private backend that only you can reach. One sign-in
+enrolls the phone; the browser never opens again.

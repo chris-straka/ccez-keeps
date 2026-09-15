@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ccez-keeps",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-12",
+  // Single deployment unit: SPA + API. Non-/api/* requests fall through
+  // to static assets. Lane C owns the D1 database_id values.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "silent-bread-ade3.cloudflareaccess.com",
+    "ACCESS_AUD": "3aefdec94d583539abc286684f4ad61cad99a53e71d7e6a7c84b273cd2840e26"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ccez-keeps",
+      "database_id": "775e3d34-b6ea-4bab-a504-d1d48877848f",
+      "migrations_dir": "db/migrations"
+    }
+  ]
+}

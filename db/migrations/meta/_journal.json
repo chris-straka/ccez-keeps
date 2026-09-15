@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789328046928,
+      "tag": "0000_naive_hannibal_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789332611410,
+      "tag": "0001_wonderful_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789372550183,
+      "tag": "0002_exotic_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789373041716,
+      "tag": "0003_steep_chimera",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789408442476,
+      "tag": "0004_mushy_invaders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789499327932,
+      "tag": "0005_nostalgic_stryfe",
+      "breakpoints": true
+    }
+  ]
+}

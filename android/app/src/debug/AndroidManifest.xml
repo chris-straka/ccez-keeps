@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only manifest: merged into debug builds alongside
+     src/main/AndroidManifest.xml. Release builds never see this file. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Allow cleartext so debug builds can point KEEPS_BASE_URL at a
+         local `wrangler dev` (http://10.0.2.2:8787) for screenshots. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

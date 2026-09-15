@@ -316,6 +316,50 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("checklist edits participate in undo/redo", async () => {
+    const t = mount([
+      note({
+        id: "1",
+        title: "Shop",
+        checklist: [
+          { id: "c1", text: "milk", checked: false },
+          { id: "c2", text: "eggs", checked: false },
+        ],
+      }),
+    ]);
+    await t.ready;
+    t.cards()[0]?.querySelector(".card-checklist")!.dispatchEvent(
+      new Event("click", { bubbles: true }),
+    );
+    await t.tick();
+    const undo = () => t.app.querySelector<HTMLButtonElement>('[data-action="undo"]')!.click();
+    const redo = () => t.app.querySelector<HTMLButtonElement>('[data-action="redo"]')!.click();
+    const texts = () =>
+      [...t.app.querySelectorAll<HTMLInputElement>(".check-text")].map((r) => r.value);
+    // Toggle, rename, add — then walk it all back.
+    const first = t.app.querySelectorAll<HTMLInputElement>(".check-toggle")[0]!;
+    first.checked = true;
+    first.dispatchEvent(new Event("change", { bubbles: true }));
+    const rows = [...t.app.querySelectorAll<HTMLInputElement>(".check-text")];
+    rows[1]!.value = "free-range eggs";
+    rows[1]!.dispatchEvent(new Event("input", { bubbles: true }));
+    t.app.querySelector<HTMLButtonElement>('[data-action="check-add"]')!.click();
+    expect(texts()).toEqual(["milk", "free-range eggs", ""]);
+    undo();
+    expect(texts()).toEqual(["milk", "free-range eggs"]);
+    undo();
+    expect(texts()).toEqual(["milk", "eggs"]);
+    undo();
+    expect(t.app.querySelectorAll<HTMLInputElement>(".check-toggle")[0]!.checked).toBe(
+      false,
+    );
+    redo();
+    expect(t.app.querySelectorAll<HTMLInputElement>(".check-toggle")[0]!.checked).toBe(
+      true,
+    );
+    t.cleanup();
+  });
+
   test("checklist mode converts body lines to items and back", async () => {
     const t = mount([note({ id: "1", title: "Shop", body: "milk\n\neggs" })]);
     await t.ready;

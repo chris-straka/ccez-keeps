@@ -47,6 +47,8 @@ export function parseReminderInput(value: string): number | null {
 interface Snapshot {
   title: string;
   body: string;
+  /** Deep copy of the checklist rows; null = plain text mode. */
+  items: ChecklistItem[] | null;
 }
 
 const HISTORY_LIMIT = 100;
@@ -137,7 +139,10 @@ export class NoteEditor extends HTMLElement {
       if (target.classList.contains("check-text")) {
         const id = (target as HTMLElement).dataset["checkId"] ?? "";
         const item = this.items?.find((i) => i.id === id);
-        if (item) item.text = (target as HTMLInputElement).value;
+        if (item) {
+          item.text = (target as HTMLInputElement).value;
+          this.push();
+        }
       }
     });
     this.addEventListener("change", (event) => {
@@ -145,7 +150,10 @@ export class NoteEditor extends HTMLElement {
       if (target.classList.contains("check-toggle")) {
         const id = (target as HTMLElement).dataset["checkId"] ?? "";
         const item = this.items?.find((i) => i.id === id);
-        if (item) item.checked = (target as HTMLInputElement).checked;
+        if (item) {
+          item.checked = (target as HTMLInputElement).checked;
+          this.push();
+        }
         return;
       }
       if (target.classList.contains("editor-file")) {
@@ -240,13 +248,26 @@ export class NoteEditor extends HTMLElement {
 
   private snapshot(): Snapshot {
     const { title, body } = this.fields();
-    return { title: title?.value ?? "", body: body?.value ?? "" };
+    return {
+      title: title?.value ?? "",
+      body: body?.value ?? "",
+      items: this.items === null ? null : this.items.map((i) => ({ ...i })),
+    };
+  }
+
+  private sameItems(a: ChecklistItem[] | null, b: ChecklistItem[] | null): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
   }
 
   private push(): void {
     const next = this.snapshot();
     const current = this.history[this.cursor];
-    if (current && current.title === next.title && current.body === next.body) {
+    if (
+      current &&
+      current.title === next.title &&
+      current.body === next.body &&
+      this.sameItems(current.items, next.items)
+    ) {
       return;
     }
     this.history = [...this.history.slice(0, this.cursor + 1), next].slice(
@@ -264,9 +285,16 @@ export class NoteEditor extends HTMLElement {
     if (!snap) return;
     const { title, body } = this.fields();
     if (title) title.value = snap.title;
-    if (body) {
+    const modeChanged = (this.items === null) !== (snap.items === null);
+    this.items = snap.items === null ? null : snap.items.map((i) => ({ ...i }));
+    if (!modeChanged && body) {
+      // Same text mode: keep the node (callers may hold a reference).
       body.value = snap.body;
       body.focus();
+    } else {
+      // New mode or list rows: the region repaint rebuilds the inputs.
+      this.paintBodyRegion(snap.body);
+      this.querySelector<HTMLInputElement>(".editor-body")?.focus();
     }
     this.paintTools();
   }
@@ -343,12 +371,14 @@ export class NoteEditor extends HTMLElement {
       checked: false,
     }));
     this.paintBodyRegion("");
+    this.push();
   }
 
   private addItem(): void {
     if (this.items === null || this.items.length >= NOTE_LIMITS.maxChecklistItems) return;
     this.items.push({ id: crypto.randomUUID(), text: "", checked: false });
     this.paintBodyRegion("");
+    this.push();
     this.querySelectorAll<HTMLInputElement>(".check-text")[
       this.items.length - 1
     ]?.focus();
@@ -358,6 +388,7 @@ export class NoteEditor extends HTMLElement {
     if (this.items === null) return;
     this.items = this.items.filter((i) => i.id !== id);
     this.paintBodyRegion("");
+    this.push();
   }
 
   private paintAttachments(): void {

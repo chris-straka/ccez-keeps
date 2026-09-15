@@ -57,6 +57,15 @@ interface LabelDao {
 }
 
 /**
+ * v3 -> v4: note repeat column. Existing rows default to fires-once.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `repeat` TEXT")
+    }
+}
+
+/**
  * v2 -> v3: labels table plus the note label/reminder columns. Notes keep
  * their rows; new columns default to no labels and no reminder.
  */

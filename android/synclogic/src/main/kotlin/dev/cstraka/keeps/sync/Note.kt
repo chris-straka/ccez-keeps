@@ -23,6 +23,8 @@ data class Note(
     val labelIds: List<String> = emptyList(),
     /** Reminder fire time, unix epoch ms; null = no reminder. */
     val reminderAt: Long? = null,
+    /** Repeat rule for the reminder; null = fires once. */
+    val repeat: String? = null,
 ) {
     init {
         require(id.isNotEmpty()) { "Note id must not be empty" }
@@ -39,7 +41,8 @@ fun isNote(note: Note): Boolean =
     note.id.isNotEmpty() &&
         note.labelIds.size <= NoteLimits.MAX_LABELS &&
         note.labelIds.all { it.length <= NoteLimits.MAX_LABEL_ID_LENGTH } &&
-        (note.reminderAt == null || note.reminderAt >= 0L)
+        (note.reminderAt == null || note.reminderAt >= 0L) &&
+        (note.repeat == null || note.repeat == "daily" || note.repeat == "weekly")
 
 val NOTE_COLORS = listOf(
     "default", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink",
@@ -56,4 +59,14 @@ fun newNote(
     deleted: Boolean = false,
     labelIds: List<String> = emptyList(),
     reminderAt: Long? = null,
-): Note = Note(id, title, body, color, pinned, archived, updatedAt, deleted, labelIds, reminderAt)
+    repeat: String? = null,
+): Note = Note(id, title, body, color, pinned, archived, updatedAt, deleted, labelIds, reminderAt, repeat)
+
+/**
+ * Next fire time for a repeat rule, relative to the fired time. Pure so
+ * both the worker (reschedule) and tests share one computation.
+ */
+fun nextRepeat(firedAt: Long, rule: String): Long = when (rule) {
+    "weekly" -> firedAt + 7 * 24 * 60 * 60 * 1000L
+    else -> firedAt + 24 * 60 * 60 * 1000L
+}

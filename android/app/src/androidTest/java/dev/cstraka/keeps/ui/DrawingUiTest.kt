@@ -51,7 +51,7 @@ class DrawingUiTest {
                 deviceName = "test",
                 onQuery = {},
                 onFilter = {},
-                onCreate = { _, _, _, _ -> },
+                onCreate = { _, _, _, _, _ -> },
                 onOpenEditor = {},
                 onCloseEditor = {},
                 onSave = { _, _, _, _ -> },
@@ -96,7 +96,7 @@ class DrawingUiTest {
                 initialBody = "hi",
                 initialColor = "default",
                 onDismiss = {},
-                onConfirm = { _, _, _, _, _ -> },
+                onConfirm = { _, _, _, _, _, _ -> },
                 onSaveDrawing = { id, s -> savedId = id; savedStrokes = s },
             )
         }
@@ -152,7 +152,7 @@ class DrawingUiTest {
                 initialColor = "default",
                 allLabels = listOf(Label(id = "l1", name = "home")),
                 onDismiss = {},
-                onConfirm = { _, _, _, _, _ -> },
+                onConfirm = { _, _, _, _, _, _ -> },
                 onSaveDrawing = { _, _ -> },
             )
         }

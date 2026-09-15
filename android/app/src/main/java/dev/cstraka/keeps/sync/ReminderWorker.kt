@@ -10,6 +10,7 @@ import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import dev.cstraka.keeps.KeepsApp
 import dev.cstraka.keeps.MainActivity
 import java.util.concurrent.TimeUnit
 
@@ -25,8 +26,31 @@ class ReminderWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         val noteId = inputData.getString(KEY_NOTE_ID) ?: return Result.failure()
         val title = inputData.getString(KEY_TITLE).orEmpty()
         val body = inputData.getString(KEY_BODY).orEmpty()
+        val at = inputData.getLong(KEY_AT, 0L)
+        val repeat = inputData.getString(KEY_REPEAT)
         showReminder(noteId, title, body)
+        if (repeat == "daily" || repeat == "weekly") {
+            advanceAndReschedule(noteId, at, repeat)
+        }
         return Result.success()
+    }
+
+    /**
+     * Repeat: advance the row past this firing and schedule the next one.
+     * Guarded on the exact fired time so a newer edit (which cancels this
+     * work on save) never gets clobbered. The advanced row syncs out via
+     * an immediate push so every client converges on the next fire.
+     */
+    private suspend fun advanceAndReschedule(noteId: String, firedAt: Long, repeat: String) {
+        val app = applicationContext as KeepsApp
+        val current = app.localStore.noteById(noteId) ?: return
+        if (current.deleted || current.reminderAt != firedAt || current.repeat != repeat) return
+        val next = nextRepeat(firedAt, repeat)
+        app.localStore.put(
+            current.copy(reminderAt = next, updatedAt = System.currentTimeMillis()),
+        )
+        schedule(applicationContext, noteId, current.title, current.body, next, repeat)
+        SyncWorker.scheduleNow(applicationContext)
     }
 
     private fun showReminder(noteId: String, title: String, body: String) {
@@ -80,16 +104,27 @@ class ReminderWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         private const val KEY_NOTE_ID = "noteId"
         private const val KEY_TITLE = "title"
         private const val KEY_BODY = "body"
+        private const val KEY_AT = "at"
+        private const val KEY_REPEAT = "repeat"
 
         private fun workName(noteId: String) = "reminder-$noteId"
 
         /** Schedule (or reschedule) the fire at [atMillis]; past times fire at once. */
-        fun schedule(context: Context, noteId: String, title: String, body: String, atMillis: Long) {
+        fun schedule(
+            context: Context,
+            noteId: String,
+            title: String,
+            body: String,
+            atMillis: Long,
+            repeat: String? = null,
+        ) {
             val delay = (atMillis - System.currentTimeMillis()).coerceAtLeast(0L)
             val input = Data.Builder()
                 .putString(KEY_NOTE_ID, noteId)
                 .putString(KEY_TITLE, title)
                 .putString(KEY_BODY, body)
+                .putLong(KEY_AT, atMillis)
+                .putString(KEY_REPEAT, repeat)
                 .build()
             val req = OneTimeWorkRequestBuilder<ReminderWorker>()
                 .setInitialDelay(delay, TimeUnit.MILLISECONDS)

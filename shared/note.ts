@@ -17,6 +17,8 @@ export interface Note {
   labelIds: string[];
   /** Reminder fire time, unix epoch ms; null = no reminder. */
   reminderAt: number | null;
+  /** Repeat rule for the reminder; null = fires once. */
+  repeat: "daily" | "weekly" | null;
 }
 
 export const NOTE_LIMITS = {
@@ -60,7 +62,12 @@ export function isNote(value: unknown): value is Note {
     (n["reminderAt"] === null ||
       (typeof n["reminderAt"] === "number" &&
         Number.isFinite(n["reminderAt"]) &&
-        (n["reminderAt"] as number) >= 0))
+        (n["reminderAt"] as number) >= 0)) &&
+    (n["repeat"] === null ||
+      // Released clients predate this field; missing means fires once.
+      n["repeat"] === undefined ||
+      n["repeat"] === "daily" ||
+      n["repeat"] === "weekly")
   );
 }
 
@@ -77,6 +84,7 @@ export function newNote(
     deleted: false,
     labelIds: [],
     reminderAt: null,
+    repeat: null,
     ...init,
     updatedAt: init.updatedAt ?? Date.now(),
   };

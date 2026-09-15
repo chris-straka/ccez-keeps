@@ -29,6 +29,8 @@ class LocalStore(
 
     suspend fun put(note: Note) = dao.upsert(note.toEntity())
 
+    suspend fun noteById(id: String): Note? = dao.byId(id)?.toNote()
+
     suspend fun putAll(notes: List<Note>) = dao.upsertAll(notes.map { it.toEntity() })
 
     suspend fun create(
@@ -36,10 +38,11 @@ class LocalStore(
         body: String,
         labelIds: List<String> = emptyList(),
         reminderAt: Long? = null,
+        repeat: String? = null,
     ): Note {
         val note = newNote(
             id = UUID.randomUUID().toString(), title = title, body = body,
-            labelIds = labelIds, reminderAt = reminderAt,
+            labelIds = labelIds, reminderAt = reminderAt, repeat = repeat,
         )
         put(note)
         return note

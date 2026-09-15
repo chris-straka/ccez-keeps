@@ -7,7 +7,9 @@ import android.content.Intent
 /**
  * Snooze buttons on reminder notifications. Reuses [ReminderWorker.schedule]
  * so there is exactly one timing path; the fired work is already consumed,
- * so rescheduling never duplicates. Explicit intents only (not exported).
+ * so rescheduling never duplicates. A snooze is always one-shot: on a
+ * repeating reminder the repeat chain continues on its own schedule.
+ * Explicit intents only (not exported).
  */
 class SnoozeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

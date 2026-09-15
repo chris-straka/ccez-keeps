@@ -141,11 +141,12 @@ class NotesViewModel(
         body: String,
         labelIds: List<String> = emptyList(),
         reminderAt: Long? = null,
+        repeat: String? = null,
     ) = viewModelScope.launch {
         if (title.isBlank() && body.isBlank() && labelIds.isEmpty() && reminderAt == null) return@launch
-        val note = store.create(title, body, labelIds.take(20), reminderAt)
+        val note = store.create(title, body, labelIds.take(20), reminderAt, repeat)
         if (reminderAt != null) {
-            ReminderWorker.schedule(app, note.id, note.title, note.body, reminderAt)
+            ReminderWorker.schedule(app, note.id, note.title, note.body, reminderAt, repeat)
         }
         touch()
     }
@@ -160,10 +161,16 @@ class NotesViewModel(
     }
 
     /** Persist editor label/reminder picks; reschedules or clears the firing. */
-    fun saveExtras(note: Note, labelIds: List<String>, reminderAt: Long?) = viewModelScope.launch {
+    fun saveExtras(
+        note: Note,
+        labelIds: List<String>,
+        reminderAt: Long?,
+        repeat: String? = null,
+    ) = viewModelScope.launch {
         val current = store.all().firstOrNull { it.id == note.id } ?: return@launch
         val updated = current.copy(
-            labelIds = labelIds.take(20), reminderAt = reminderAt, updatedAt = now(),
+            labelIds = labelIds.take(20), reminderAt = reminderAt,
+            repeat = repeat, updatedAt = now(),
         )
         store.put(updated)
         refreshReminder(updated)
@@ -181,7 +188,7 @@ class NotesViewModel(
     private fun refreshReminder(note: Note) {
         val at = note.reminderAt
         if (at != null && !note.deleted) {
-            ReminderWorker.schedule(app, note.id, note.title, note.body, at)
+            ReminderWorker.schedule(app, note.id, note.title, note.body, at, note.repeat)
         } else {
             ReminderWorker.cancel(app, note.id)
         }

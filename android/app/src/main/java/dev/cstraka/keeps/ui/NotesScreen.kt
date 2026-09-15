@@ -205,13 +205,13 @@ fun NotesScreen(
     onQuery: (String) -> Unit,
     onFilter: (NoteFilter) -> Unit,
     onLabelFilter: (String?) -> Unit = {},
-    onCreate: (String, String, List<String>, Long?) -> Unit,
+    onCreate: (String, String, List<String>, Long?, String?) -> Unit,
     composerOpen: Boolean = false,
     onComposerOpen: (Boolean) -> Unit = {},
     onOpenEditor: (Note?) -> Unit,
     onCloseEditor: () -> Unit,
     onSave: (Note, String, String, String) -> Unit,
-    onSaveExtras: (Note, List<String>, Long?) -> Unit = { _, _, _ -> },
+    onSaveExtras: (Note, List<String>, Long?, String?) -> Unit = { _, _, _, _ -> },
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
     onPin: (Note) -> Unit,
@@ -453,8 +453,8 @@ fun NotesScreen(
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = { onComposerOpen(false) },
-                onConfirm = { t, b, c, labIds, reminder ->
-                    onCreate(t, b, labIds, reminder)
+                onConfirm = { t, b, c, labIds, reminder, repeat ->
+                    onCreate(t, b, labIds, reminder, repeat)
                     onComposerOpen(false)
                 },
                 onSaveDrawing = onSaveDrawing,
@@ -470,12 +470,13 @@ fun NotesScreen(
                 dark = dark,
                 initialLabelIds = note.labelIds,
                 initialReminderAt = note.reminderAt,
+                initialRepeat = note.repeat,
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = onCloseEditor,
-                onConfirm = { t, b, c, labIds, reminder ->
+                onConfirm = { t, b, c, labIds, reminder, repeat ->
                     onSave(note, t, b, c)
-                    onSaveExtras(note, labIds, reminder)
+                    onSaveExtras(note, labIds, reminder, repeat)
                 },
                 onSaveDrawing = onSaveDrawing,
             )
@@ -698,7 +699,13 @@ private fun NoteCard(
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        formatReminder(at) + if (overdue) " • Overdue" else "",
+                        formatReminder(at) +
+                            if (overdue) " • Overdue" else "" +
+                            when (note.repeat) {
+                                "daily" -> " • Daily"
+                                "weekly" -> " • Weekly"
+                                else -> ""
+                            },
                         fontSize = 11.sp,
                         color = if (overdue) Color(0xFFEF9A9A) else Color.Gray,
                     )
@@ -742,10 +749,11 @@ fun NoteDialog(
     dark: Boolean = true,
     initialLabelIds: List<String> = emptyList(),
     initialReminderAt: Long? = null,
+    initialRepeat: String? = null,
     allLabels: List<Label> = emptyList(),
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String, List<String>, Long?) -> Unit,
+    onConfirm: (String, String, String, List<String>, Long?, String?) -> Unit,
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -756,6 +764,7 @@ fun NoteDialog(
     var c by remember { mutableStateOf(initialColor) }
     val selIds = remember { mutableStateListOf(*initialLabelIds.toTypedArray()) }
     var reminder by remember { mutableStateOf(initialReminderAt) }
+    var repeatSel by remember { mutableStateOf(initialRepeat) }
     var labelPickerOpen by remember { mutableStateOf(false) }
     var newLabelName by remember { mutableStateOf("") }
     var pendingSelect by remember { mutableStateOf<String?>(null) }
@@ -1053,10 +1062,35 @@ fun NoteDialog(
                                 modifier = Modifier.weight(1f),
                             )
                             if (reminder != null) {
-                                TextButton(onClick = { reminder = null }) { Text("Clear") }
+                                TextButton(onClick = {
+                                    reminder = null
+                                    repeatSel = null
+                                }) { Text("Clear") }
                             }
                             TextButton(onClick = { showDate = true }) {
                                 Text(if (reminder == null) "Add" else "Change")
+                            }
+                        }
+                        // Repeat only exists attached to a reminder.
+                        if (reminder != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Repeats",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                for ((label, value) in listOf("None" to null, "Daily" to "daily", "Weekly" to "weekly")) {
+                                    val selected = repeatSel == value
+                                    TextButton(onClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        repeatSel = value
+                                    }) {
+                                        Text(
+                                            label,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        )
+                                    }
+                                }
                             }
                         }
                         Spacer(Modifier.height(12.dp))
@@ -1068,7 +1102,7 @@ fun NoteDialog(
                             Spacer(Modifier.width(8.dp))
                             TextButton(onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                onConfirm(t, b.text, c, selIds.toList(), reminder)
+                                onConfirm(t, b.text, c, selIds.toList(), reminder, repeatSel)
                             }) { Text("Save") }
                         }
                     }

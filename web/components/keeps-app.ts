@@ -838,6 +838,7 @@ export class KeepsApp extends HTMLElement {
           color: note.color,
           labelIds: note.labelIds,
           reminderAt: note.reminderAt,
+          repeat: note.repeat,
         });
         return;
       }
@@ -876,10 +877,13 @@ export class KeepsApp extends HTMLElement {
   private async onSave(draft: NoteDraft): Promise<void> {
     const store = this.requireStore();
     const extras =
-      draft.labelIds !== undefined || draft.reminderAt !== undefined
+      draft.labelIds !== undefined ||
+      draft.reminderAt !== undefined ||
+      draft.repeat !== undefined
         ? {
             ...(draft.labelIds !== undefined ? { labelIds: draft.labelIds } : {}),
             ...(draft.reminderAt !== undefined ? { reminderAt: draft.reminderAt } : {}),
+            ...(draft.repeat !== undefined ? { repeat: draft.repeat } : {}),
           }
         : {};
     if (this.editingId) {

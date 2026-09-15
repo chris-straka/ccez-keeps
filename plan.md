@@ -64,6 +64,12 @@ referencing labels by value, no cascade) and `reminderAt: number|null`
 (epoch ms, null = none, clients notify locally) — both ride note sync
 under LWW with no new table or endpoint for reminders.
 
+Contract amendment (repeat, implemented): `Note.repeat: "daily"|"weekly"|null`
+(stored in `notes.repeat` via migration 0006, `NULL` = fires once; missing on
+input accepted as null for pre-repeat clients). Firing clients advance the row
+past each fire and reschedule, converging the next fire time through note sync;
+server validates, never fires.
+
 Schema: `notes(id TEXT PK, title TEXT, body TEXT, color TEXT, pinned INT, archived INT, updatedAt INT, deleted INT)` owned by Drizzle schema file; D1 migration generated from it.
 
 ## Work Plan

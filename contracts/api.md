@@ -102,10 +102,12 @@ the notes lane (below) and clients schedule notifications locally.
 ## Note label + reminder fields (plan.md amendment)
 
 Notes carry `labelIds: string[]` (at most 20 ids, each at most 64 chars,
-referencing `Label` ids by value — no server-side join or cascade) and
-`reminderAt: number|null` (unix epoch ms fire time, `null` = none). Both
-ride note sync free under the same per-note LWW and are validated by
-`isNote` (400 on violation, like any other malformed note).
+referencing `Label` ids by value — no server-side join or cascade),
+`reminderAt: number|null` (unix epoch ms fire time, `null` = none), and
+`repeat: "daily"|"weekly"|null` (`null` = fires once; missing on input is
+accepted as `null` for pre-repeat clients). All three ride note sync free
+under the same per-note LWW and are validated by `isNote` (400 on
+violation, like any other malformed note).
 
 ## Conflict rule (both sides, identical)
 

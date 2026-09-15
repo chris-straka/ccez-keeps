@@ -19,6 +19,7 @@ const DDL = `CREATE TABLE notes (
   deleted integer DEFAULT 0 NOT NULL,
   labelIds text DEFAULT '[]' NOT NULL,
   reminderAt integer,
+  repeat text,
   seq integer DEFAULT 0 NOT NULL
 );
 CREATE TABLE _sync_seq (

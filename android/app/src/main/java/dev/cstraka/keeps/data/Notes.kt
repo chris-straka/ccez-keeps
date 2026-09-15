@@ -33,6 +33,8 @@ data class NoteEntity(
     val labelIds: String = "[]",
     /** Reminder fire time, unix epoch ms; null = none (v3). */
     val reminderAt: Long? = null,
+    /** Repeat rule ("daily"/"weekly"); null = fires once (v4). */
+    val repeat: String? = null,
 )
 
 fun NoteEntity.toNote(): Note = Note(
@@ -45,6 +47,7 @@ fun NoteEntity.toNote(): Note = Note(
         emptyList()
     },
     reminderAt = reminderAt,
+    repeat = repeat,
 )
 
 fun Note.toEntity(): NoteEntity = NoteEntity(
@@ -53,6 +56,7 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     updatedAt = updatedAt, deleted = if (deleted) 1 else 0,
     labelIds = apiJson.encodeToString(labelIds),
     reminderAt = reminderAt,
+    repeat = repeat,
 )
 
 @Dao
@@ -62,6 +66,9 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes")
     suspend fun all(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE id = :id")
+    suspend fun byId(id: String): NoteEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<NoteEntity>)
@@ -75,7 +82,7 @@ interface NoteDao {
 
 @Database(
     entities = [NoteEntity::class, DrawingEntity::class, LabelEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class KeepsDatabase : RoomDatabase() {

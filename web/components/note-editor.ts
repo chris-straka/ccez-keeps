@@ -17,6 +17,7 @@ export interface NoteDraft {
   color: string;
   labelIds?: string[];
   reminderAt?: number | null;
+  repeat?: "daily" | "weekly" | null;
 }
 
 export interface LabelOption {
@@ -128,6 +129,13 @@ export class NoteEditor extends HTMLElement {
           }
           <div class="editor-reminder-row">
             <label>Remind me <input type="datetime-local" class="editor-reminder" value="${toReminderInput(source.reminderAt)}" /></label>
+            <label>Repeat
+              <select class="editor-repeat" aria-label="Repeat">
+                <option value=""${source.repeat ? "" : " selected"}>Never</option>
+                <option value="daily"${source.repeat === "daily" ? " selected" : ""}>Daily</option>
+                <option value="weekly"${source.repeat === "weekly" ? " selected" : ""}>Weekly</option>
+              </select>
+            </label>
           </div>
           <div class="editor-tools" role="toolbar" aria-label="Edit tools">
             <button data-action="undo" aria-label="Undo">Undo</button>
@@ -256,8 +264,17 @@ export class NoteEditor extends HTMLElement {
       const reminderAt = parseReminderInput(
         this.querySelector<HTMLInputElement>(".editor-reminder")?.value ?? "",
       );
+      // Repeat only exists attached to a reminder.
+      const repeatValue =
+        this.querySelector<HTMLSelectElement>(".editor-repeat")?.value ?? "";
+      const repeat =
+        reminderAt === null
+          ? null
+          : repeatValue === "daily" || repeatValue === "weekly"
+            ? repeatValue
+            : null;
       this.dispatchEvent(
-        new CustomEvent("note-save", { bubbles: true, composed: true, detail: { title, body, color, labelIds, reminderAt } satisfies NoteDraft }),
+        new CustomEvent("note-save", { bubbles: true, composed: true, detail: { title, body, color, labelIds, reminderAt, repeat } satisfies NoteDraft }),
       );
     } else {
       this.dispatchEvent(new CustomEvent("note-cancel", { bubbles: true, composed: true }));

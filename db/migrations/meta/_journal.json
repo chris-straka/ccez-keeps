@@ -43,6 +43,13 @@
       "when": 1789499327932,
       "tag": "0005_nostalgic_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789503921111,
+      "tag": "0006_bumpy_joseph",
+      "breakpoints": true
     }
   ]
 }

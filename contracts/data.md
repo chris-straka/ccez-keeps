@@ -37,8 +37,10 @@ at most 32 chars. Notes attach labels by id through
 `Note.labelIds: string[]` (at most 20 entries, each at most 64 chars,
 stored as a JSON string in `notes.labelIds`); dangling ids are inert
 (no cascade in v1). Reminders are `Note.reminderAt: number|null` (unix
-epoch ms, `null` = none, stored in `notes.reminderAt`); clients schedule
-notifications locally, the server never fires. Both fields ride note sync
+epoch ms, `null` = none, stored in `notes.reminderAt`) with optional
+`Note.repeat: "daily"|"weekly"|null` (stored in `notes.repeat`, `NULL` =
+fires once); clients schedule notifications locally and advance repeating
+rows on fire, the server never fires. All three fields ride note sync
 under LWW with no new table or endpoint.
 
 ## IndexedDB (lane B implements; interface frozen here)

@@ -12,6 +12,15 @@ describe("isNote", () => {
     expect(isNote({ ...base(), updatedAt: Number.NaN })).toBe(false);
     expect(isNote({ ...base(), id: "" })).toBe(false);
   });
+
+  test("repeat accepts null/daily/weekly, tolerates pre-repeat rows", () => {
+    expect(isNote(base({ repeat: null }))).toBe(true);
+    expect(isNote(base({ repeat: "daily" }))).toBe(true);
+    expect(isNote(base({ repeat: "weekly" }))).toBe(true);
+    expect(isNote(base({ repeat: "monthly" }))).toBe(false);
+    const { repeat: _dropped, ...legacy } = base();
+    expect(isNote(legacy)).toBe(true);
+  });
 });
 
 describe("pickWinner (last-write-wins)", () => {

@@ -857,6 +857,36 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
+  test("editor repeat selector saves daily; card shows the rule", async () => {
+    const t = await mountWithLabels([note({ id: "1", title: "Call" })]);
+    await t.ready;
+    await t.tick();
+    t.cards()[0]!.click();
+    await t.tick();
+    t.app.querySelector<HTMLInputElement>(".editor-reminder")!.value = "2030-05-01T10:00";
+    t.app.querySelector<HTMLSelectElement>(".editor-repeat")!.value = "daily";
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("1"))?.repeat).toBe("daily");
+    expect(t.cards()[0]?.querySelector(".reminder")?.textContent).toContain("Daily");
+    t.cleanup();
+  });
+
+  test("repeat without a reminder saves null", async () => {
+    const t = await mountWithLabels([note({ id: "1", title: "Call" })]);
+    await t.ready;
+    await t.tick();
+    t.cards()[0]!.click();
+    await t.tick();
+    t.app.querySelector<HTMLSelectElement>(".editor-repeat")!.value = "weekly";
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("1"))?.repeat).toBeNull();
+    t.cleanup();
+  });
+
   test("past reminder renders overdue style; clearing the field removes it", async () => {
     const t = await mountWithLabels([
       note({ id: "1", title: "Late", reminderAt: 1000 }),

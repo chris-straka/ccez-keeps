@@ -94,10 +94,12 @@ export class NoteCard extends HTMLElement {
           `<span class="label-chip" data-color="${escapeHtml(this.colors[id] ?? "default")}">${escapeHtml(this.names[id] ?? id)}</span>`,
       )
       .join("");
+    const repeatSuffix =
+      note.repeat === "daily" ? " • Daily" : note.repeat === "weekly" ? " • Weekly" : "";
     const reminder =
       note.reminderAt === null
         ? ""
-        : `<div class="reminder${isOverdue(note) ? " is-overdue" : ""}">Reminds ${escapeHtml(formatReminder(note.reminderAt))}</div>`;
+        : `<div class="reminder${isOverdue(note) ? " is-overdue" : ""}">Reminds ${escapeHtml(formatReminder(note.reminderAt))}${repeatSuffix}</div>`;
     this.innerHTML = `
       <div class="card-title">${escapeHtml(note.title) || "&nbsp;"}</div>
       <div class="card-body">${renderBody(note.body)}</div>

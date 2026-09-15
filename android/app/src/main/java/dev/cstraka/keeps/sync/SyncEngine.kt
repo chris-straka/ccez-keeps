@@ -118,7 +118,9 @@ class SyncEngine(
         // their firings here, since nothing else schedules pulled notes.
         val plan = planReminders(written, System.currentTimeMillis())
         for (note in plan.schedule) {
-            ReminderWorker.schedule(context, note.id, note.title, note.body, note.reminderAt!!)
+            ReminderWorker.schedule(
+                context, note.id, note.title, note.body, note.reminderAt!!, note.repeat,
+            )
         }
         for (id in plan.cancel) ReminderWorker.cancel(context, id)
     }

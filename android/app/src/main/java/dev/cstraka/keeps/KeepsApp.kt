@@ -10,6 +10,8 @@ import dev.cstraka.keeps.data.KeepsDatabase
 import dev.cstraka.keeps.data.LocalStore
 import dev.cstraka.keeps.data.MIGRATION_1_2
 import dev.cstraka.keeps.data.MIGRATION_2_3
+import dev.cstraka.keeps.data.MIGRATION_3_4
+import dev.cstraka.keeps.data.MIGRATION_2_3
 import dev.cstraka.keeps.sync.KeepsApi
 import dev.cstraka.keeps.sync.ReminderWorker
 import dev.cstraka.keeps.sync.SyncEngine
@@ -35,7 +37,7 @@ class KeepsApp : Application(), Configuration.Provider {
         super.onCreate()
         authStore = AuthStore(this)
         val db = Room.databaseBuilder(this, KeepsDatabase::class.java, "keeps")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
         val meta = getSharedPreferences("sync_meta", MODE_PRIVATE)
         localStore = LocalStore(db.noteDao(), db.drawingDao(), db.labelDao(), meta)

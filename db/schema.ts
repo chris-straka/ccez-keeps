@@ -16,6 +16,8 @@ export const notes = sqliteTable("notes", {
   labelIds: text("labelIds").notNull().default("[]"),
   // Reminder fire time, unix epoch ms; NULL = no reminder (no server timing).
   reminderAt: integer("reminderAt"),
+  // Repeat rule; NULL = fires once. Validated, never interpreted server-side.
+  repeat: text("repeat"),
   // Server-assigned write sequence (dissemination order). Conflicts are
   // still decided by updatedAt (wall clock, LWW); seq only decides WHAT
   // the client hasn't seen, so late-arriving old-timestamp rows stay

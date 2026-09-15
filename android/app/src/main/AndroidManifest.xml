@@ -33,6 +33,11 @@
             android:authorities="${applicationId}.androidx-startup"
             tools:node="remove" />
 
+        <!-- Reminder snooze buttons: explicit intents only, never exported. -->
+        <receiver
+            android:name=".sync.SnoozeReceiver"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

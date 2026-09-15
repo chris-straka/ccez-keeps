@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type {
   D1Database,
   ExecutionContext,
+  ScheduledEvent,
 } from "@cloudflare/workers-types/2023-07-01";
 import { drizzle } from "drizzle-orm/d1";
 import { isNote, type Note } from "../shared/note.js";
@@ -22,6 +23,7 @@ import {
   rotateDeviceToken,
 } from "./devices.js";
 import { applySync, getDeltas, type NotesDb } from "./notes.js";
+import { purgeTrash } from "./purge.js";
 
 export interface WorkerEnv {
   // Minimal surface we use; avoids DOM-vs-Workers lib clashes.
@@ -339,5 +341,14 @@ export default {
       return app.fetch(request, env);
     }
     return env.ASSETS.fetch(request);
+  },
+
+  /** Nightly trash expiry (wrangler.jsonc triggers). No auth needed. */
+  async scheduled(
+    _event: ScheduledEvent,
+    env: WorkerEnv,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
+    await purgeTrash(drizzle(env.DB), Date.now());
   },
 };

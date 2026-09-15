@@ -657,7 +657,10 @@ describe("keeps-app", () => {
 });
 
 describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
-  async function mountWithLabels(initial: Note[] = [], labelSeed: { id: string; name: string }[] = []) {
+  async function mountWithLabels(
+    initial: Note[] = [],
+    labelSeed: { id: string; name: string; color?: string }[] = [],
+  ) {
     const { LabelsStore } = await import("../web/store/labels.js");
     (globalThis as unknown as Record<string, unknown>)["fetch"] = () => {
       throw new Error("components must not fetch");
@@ -668,7 +671,7 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
       labels.put({
         id: s.id,
         name: s.name,
-        color: "default",
+        color: s.color ?? "default",
         updatedAt: 1000,
         deleted: false,
       });
@@ -702,6 +705,18 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     await t.tick();
     const chip = t.cards()[0]?.querySelector(".label-chip");
     expect(chip?.textContent).toBe("Errands");
+    t.cleanup();
+  });
+
+  test("label chips carry their label color, defaulting safely", async () => {
+    const t = await mountWithLabels(
+      [note({ id: "1", title: "Shop", labelIds: ["l1", "ghost"] })],
+      [{ id: "l1", name: "Errands", color: "red" }],
+    );
+    await t.ready;
+    await t.tick();
+    const chips = [...t.cards()[0]?.querySelectorAll(".label-chip") ?? []];
+    expect(chips.map((c) => c.getAttribute("data-color"))).toEqual(["red", "default"]);
     t.cleanup();
   });
 

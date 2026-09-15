@@ -51,6 +51,8 @@ class ReminderWorker(appContext: Context, params: WorkerParameters) : CoroutineW
             .setContentIntent(tap)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .addAction(0, "10 min", snoozeAction(noteId, title, body, 10))
+            .addAction(0, "1 hr", snoozeAction(noteId, title, body, 60))
             .build()
         try {
             NotificationManagerCompat.from(applicationContext)
@@ -58,6 +60,19 @@ class ReminderWorker(appContext: Context, params: WorkerParameters) : CoroutineW
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS denied: the in-app overdue state remains.
         }
+    }
+
+    private fun snoozeAction(noteId: String, title: String, body: String, delayMin: Int): PendingIntent {
+        val intent = Intent(applicationContext, SnoozeReceiver::class.java).apply {
+            putExtra(SnoozeReceiver.EXTRA_NOTE_ID, noteId)
+            putExtra(SnoozeReceiver.EXTRA_TITLE, title)
+            putExtra(SnoozeReceiver.EXTRA_BODY, body)
+            putExtra(SnoozeReceiver.EXTRA_DELAY_MINUTES, delayMin)
+        }
+        return PendingIntent.getBroadcast(
+            applicationContext, noteId.hashCode() * 31 + delayMin, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     companion object {

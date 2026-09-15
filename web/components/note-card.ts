@@ -31,6 +31,7 @@ export function formatReminder(ts: number): string {
 export class NoteCard extends HTMLElement {
   private current: Note | undefined;
   private names: Record<string, string> = {};
+  private colors: Record<string, string> = {};
 
   set note(value: Note) {
     this.current = value;
@@ -43,6 +44,11 @@ export class NoteCard extends HTMLElement {
 
   set labelNames(value: Record<string, string>) {
     this.names = value ?? {};
+    this.render();
+  }
+
+  set labelColors(value: Record<string, string>) {
+    this.colors = value ?? {};
     this.render();
   }
 
@@ -85,7 +91,7 @@ export class NoteCard extends HTMLElement {
     const chips = (note.labelIds ?? [])
       .map(
         (id) =>
-          `<span class="label-chip">${escapeHtml(this.names[id] ?? id)}</span>`,
+          `<span class="label-chip" data-color="${escapeHtml(this.colors[id] ?? "default")}">${escapeHtml(this.names[id] ?? id)}</span>`,
       )
       .join("");
     const reminder =

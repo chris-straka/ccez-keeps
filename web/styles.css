@@ -621,6 +621,25 @@ note-card:focus-within .card-actions {
   white-space: nowrap;
 }
 
+/* Label colors: bright tints on dark, deep tones on light. */
+.label-chip[data-color="red"] { color: #f28b82; border-color: #f28b82; }
+.label-chip[data-color="orange"] { color: #fbbc04; border-color: #fbbc04; }
+.label-chip[data-color="yellow"] { color: #fff475; border-color: #fff475; }
+.label-chip[data-color="green"] { color: #ccff90; border-color: #ccff90; }
+.label-chip[data-color="teal"] { color: #a7ffeb; border-color: #a7ffeb; }
+.label-chip[data-color="blue"] { color: #cbf0f8; border-color: #cbf0f8; }
+.label-chip[data-color="purple"] { color: #d7aefb; border-color: #d7aefb; }
+.label-chip[data-color="pink"] { color: #fdcfe8; border-color: #fdcfe8; }
+
+html[data-theme="light"] .label-chip[data-color="red"] { color: #c5221f; border-color: #c5221f; }
+html[data-theme="light"] .label-chip[data-color="orange"] { color: #b06000; border-color: #b06000; }
+html[data-theme="light"] .label-chip[data-color="yellow"] { color: #7a5c00; border-color: #7a5c00; }
+html[data-theme="light"] .label-chip[data-color="green"] { color: #1e8e3e; border-color: #1e8e3e; }
+html[data-theme="light"] .label-chip[data-color="teal"] { color: #04786a; border-color: #04786a; }
+html[data-theme="light"] .label-chip[data-color="blue"] { color: #1a73e8; border-color: #1a73e8; }
+html[data-theme="light"] .label-chip[data-color="purple"] { color: #9334e6; border-color: #9334e6; }
+html[data-theme="light"] .label-chip[data-color="pink"] { color: #d01884; border-color: #d01884; }
+
 .reminder {
   font-size: 12px;
   color: var(--muted);

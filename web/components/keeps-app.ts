@@ -196,6 +196,12 @@ export class KeepsApp extends HTMLElement {
     return map;
   }
 
+  private labelColorMap(): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const l of this.labelCache) map[l.id] = l.color;
+    return map;
+  }
+
   private labelOptions(): LabelOption[] {
     return this.labelCache.map((l) => ({ id: l.id, name: l.name }));
   }
@@ -565,9 +571,11 @@ export class KeepsApp extends HTMLElement {
     grid.textContent = "";
     const doc = this.ownerDocument;
     const names = this.labelNameMap();
+    const colors = this.labelColorMap();
     for (const note of notes) {
       const el = doc.createElement("note-card");
       (el as unknown as { labelNames: Record<string, string> }).labelNames = names;
+      (el as unknown as { labelColors: Record<string, string> }).labelColors = colors;
       (el as unknown as { note: Note }).note = note;
       grid.appendChild(el);
     }

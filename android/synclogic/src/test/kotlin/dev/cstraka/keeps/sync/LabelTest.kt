@@ -101,6 +101,34 @@ class LabelTest {
     }
 
     @Test
+    fun applyLabelRename_trimsAndStamps() {
+        val label = newLabel(id = "l", name = "old", updatedAt = 100L)
+        val renamed = applyLabelRename(label, "  home  ", now = 200L)
+        assertEquals("home", renamed?.name)
+        assertEquals(200L, renamed?.updatedAt)
+        assertEquals("old", label.name)
+    }
+
+    @Test
+    fun applyLabelRename_rejectsBlankKeepsLong() {
+        val label = newLabel(id = "l", name = "old", updatedAt = 100L)
+        assertEquals(null, applyLabelRename(label, "   ", now = 200L))
+        val long = applyLabelRename(label, "x".repeat(200), now = 200L)
+        assertEquals(120, long?.name?.length)
+        assertTrue(isLabel(long!!))
+    }
+
+    @Test
+    fun applyLabelDelete_tombstonesWithoutMutating() {
+        val label = newLabel(id = "l", name = "home", updatedAt = 100L)
+        val deleted = applyLabelDelete(label, now = 300L)
+        assertTrue(deleted.deleted)
+        assertEquals(300L, deleted.updatedAt)
+        assertEquals("home", deleted.name)
+        assertTrue(!label.deleted)
+    }
+
+    @Test
     fun isNote_rejectsOverlongLabelsAndNegativeReminder() {
         assertFalse(isNote(newNote(id = "n", labelIds = List(21) { "l$it" })))
         assertFalse(isNote(newNote(id = "n", labelIds = listOf("x".repeat(65)))))

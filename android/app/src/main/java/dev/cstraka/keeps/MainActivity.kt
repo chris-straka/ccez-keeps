@@ -104,6 +104,9 @@ class MainActivity : ComponentActivity() {
                     updateTag = notesModel.updateTag.collectAsState().value,
                     onUpdate = { openUpdatePage() },
                     onExport = { shareExport() },
+                    onImportJson = notesModel::importJson,
+                    onRenameLabel = notesModel::renameLabel,
+                    onDeleteLabel = notesModel::deleteLabel,
                 )
             }
         }

@@ -7,9 +7,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import android.content.ClipData
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.draganddrop.dragAndDropSource
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +35,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
@@ -34,13 +44,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -77,6 +93,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -111,6 +128,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dev.cstraka.keeps.data.attachmentBitmap
@@ -209,7 +227,7 @@ fun syncLabel(status: SyncStatus): String = when (status) {
     is SyncStatus.Error -> "Sync error"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NotesScreen(
     state: NotesUiState,
@@ -248,13 +266,60 @@ fun NotesScreen(
     updateTag: String? = null,
     onUpdate: () -> Unit = {},
     onExport: () -> Unit = {},
+    onImportJson: (String) -> Unit = {},
+    onRenameLabel: (String, String) -> Unit = { _, _ -> },
+    onDeleteLabel: (String) -> Unit = {},
 ) {
     val drawer = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     val dark = themeDark(theme)
     var settingsOpen by remember { mutableStateOf(false) }
+    // Label being renamed/deleted via drawer long-press; null hides.
+    var labelDialog by remember { mutableStateOf<Label?>(null) }
+    // Backup file picker for Settings → Import (same JSON Export writes).
+    val importPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                val text = try {
+                    context.contentResolver.openInputStream(uri)
+                        ?.bufferedReader()?.use { it.readText() }
+                } catch (_: Exception) {
+                    null
+                }
+                if (text != null) onImportJson(text)
+            }
+        }
+    }
+    var listView by rememberSaveable { mutableStateOf(false) }
+    // Note being long-press dragged; while non-null the filing bar is shown.
+    var draggingNote by remember { mutableStateOf<Note?>(null) }
+
+    fun handleNoteDrop(target: NoteDropTarget, note: Note) {
+        when (target) {
+            NoteDropTarget.Archive ->
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+            NoteDropTarget.Trash ->
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            is NoteDropTarget.LabelDrop ->
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+        }
+        applyNoteDrop(
+            target = target,
+            note = note,
+            labels = state.labels,
+            onArchive = onArchive,
+            onTrash = onTrash,
+            onAddLabel = { n, lab ->
+                onSaveExtras(n, n.labelIds + lab.id, n.reminderAt, n.repeat)
+            },
+        )
+        draggingNote = null
+    }
 
     LaunchedEffect(deleteError) {
         if (deleteError) {
@@ -272,14 +337,15 @@ fun NotesScreen(
                 ModalDrawerSheet {
                     Text("Keeps", style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(16.dp))
-                    for ((label, f) in listOf(
-                        "Notes" to NoteFilter.NOTES,
-                        "Reminders" to NoteFilter.REMINDERS,
-                        "Archive" to NoteFilter.ARCHIVE,
-                        "Trash" to NoteFilter.TRASH,
+                    for ((label, f, icon) in listOf(
+                        Triple("Notes", NoteFilter.NOTES, Icons.Filled.Lightbulb),
+                        Triple("Reminders", NoteFilter.REMINDERS, Icons.Filled.Notifications),
+                        Triple("Archive", NoteFilter.ARCHIVE, Icons.Filled.Archive),
+                        Triple("Trash", NoteFilter.TRASH, Icons.Filled.Delete),
                     )) {
                         NavigationDrawerItem(
                             label = { Text(label) },
+                            icon = { Icon(icon, contentDescription = null) },
                             selected = state.filter == f && state.labelFilter == null,
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -300,20 +366,29 @@ fun NotesScreen(
                         for (lab in state.labels) {
                             NavigationDrawerItem(
                                 label = { Text(lab.name) },
+                                icon = { Icon(Icons.Filled.Label, contentDescription = null) },
                                 selected = state.labelFilter == lab.id,
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onFilter(NoteFilter.NOTES)
-                                    onLabelFilter(if (state.labelFilter == lab.id) null else lab.id)
-                                    scope.launch { drawer.close() }
-                                },
-                                modifier = Modifier.padding(horizontal = 8.dp),
+                                onClick = {},
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                                    .combinedClickable(
+                                        onClick = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            onFilter(NoteFilter.NOTES)
+                                            onLabelFilter(if (state.labelFilter == lab.id) null else lab.id)
+                                            scope.launch { drawer.close() }
+                                        },
+                                        onLongClick = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            labelDialog = lab
+                                        },
+                                    ),
                             )
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     NavigationDrawerItem(
                         label = { Text("Settings") },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
                         selected = false,
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -349,6 +424,15 @@ fun NotesScreen(
                             )
                             IconButton(onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                listView = !listView
+                            }) {
+                                Icon(
+                                    if (listView) Icons.Filled.ViewModule else Icons.Filled.ViewList,
+                                    contentDescription = if (listView) "Grid view" else "List view",
+                                )
+                            }
+                            IconButton(onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 onSyncNow()
                             }) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Sync now")
@@ -358,7 +442,8 @@ fun NotesScreen(
                 },
                 floatingActionButton = {
                     AnimatedVisibility(
-                        visible = state.filter == NoteFilter.NOTES,
+                        visible = state.filter == NoteFilter.NOTES ||
+                            state.filter == NoteFilter.REMINDERS,
                         enter = fadeIn(tween(180)) + scaleIn(tween(180)),
                         exit = fadeOut(tween(150)) + scaleOut(tween(150)),
                     ) {
@@ -416,41 +501,73 @@ fun NotesScreen(
                                 )
                             }
                         } else {
-                            LazyVerticalStaggeredGrid(
-                                columns = StaggeredGridCells.Fixed(2),
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalItemSpacing = 8.dp,
-                            ) {
-                                items(state.notes, key = { it.id }) { note ->
-                                    NoteCard(
-                                        note = note,
-                                        drawings = state.drawings,
+                            @Composable
+                            fun card(note: Note, modifier: Modifier = Modifier) {
+                                NoteCard(
+                                    note = note,
+                                    drawings = state.drawings,
+                                    labels = state.labels,
+                                    filter = state.filter,
+                                    dark = dark,
+                                    modifier = modifier,
+                                    onOpen = { onOpenEditor(note) },
+                                    onPin = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        onPin(note)
+                                    },
+                                    onArchive = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        onArchive(note)
+                                    },
+                                    onTrash = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onTrash(note)
+                                    },
+                                    onRestore = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        onRestore(note)
+                                    },
+                                    onDeleteForever = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onDeleteForever(note)
+                                    },
+                                    onDragStart = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        draggingNote = it
+                                    },
+                                )
+                            }
+                            Box(Modifier.fillMaxSize()) {
+                                if (listView) {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        items(state.notes, key = { it.id }) { note ->
+                                            card(note, Modifier.animateItem())
+                                        }
+                                    }
+                                } else {
+                                    LazyVerticalStaggeredGrid(
+                                        columns = StaggeredGridCells.Fixed(2),
+                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalItemSpacing = 8.dp,
+                                    ) {
+                                        items(state.notes, key = { it.id }) { note ->
+                                            card(note, Modifier.animateItem())
+                                        }
+                                    }
+                                }
+                                // Filing bar overlays the list while a card is dragged.
+                                val filing = draggingNote
+                                if (filing != null) {
+                                    NoteDropTargets(
                                         labels = state.labels,
-                                        filter = state.filter,
-                                        dark = dark,
-                                        modifier = Modifier.animateItem(),
-                                        onOpen = { onOpenEditor(note) },
-                                        onPin = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            onPin(note)
-                                        },
-                                        onArchive = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            onArchive(note)
-                                        },
-                                        onTrash = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onTrash(note)
-                                        },
-                                        onRestore = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                            onRestore(note)
-                                        },
-                                        onDeleteForever = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onDeleteForever(note)
-                                        },
+                                        onDrop = { target -> handleNoteDrop(target, filing) },
+                                        onCancel = { draggingNote = null },
+                                        modifier = Modifier.align(Alignment.BottomCenter)
+                                            .padding(bottom = 88.dp),
                                     )
                                 }
                             }
@@ -470,6 +587,7 @@ fun NotesScreen(
                 dark = dark,
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
+                startWithReminderPicker = state.filter == NoteFilter.REMINDERS,
                 onDismiss = { onComposerOpen(false) },
                 onConfirm = { t, b, c, labIds, reminder, repeat, checklist, attachments ->
                     onCreate(t, b, labIds, reminder, repeat, checklist, attachments)
@@ -581,10 +699,16 @@ fun NotesScreen(
                                 color = if (updateTag != null) MaterialTheme.colorScheme.primary else Color.Unspecified,
                             )
                         }
-                        TextButton(onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onExport()
-                        }) { Text("Export notes") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onExport()
+                            }) { Text("Export notes") }
+                            TextButton(onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                importPicker.launch(arrayOf("application/json"))
+                            }) { Text("Import notes") }
+                        }
                         TextButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             settingsOpen = false
@@ -598,6 +722,43 @@ fun NotesScreen(
                         settingsOpen = false
                         onClearSettingsMessage()
                     }) { Text("Close") }
+                },
+            )
+        }
+
+        // Drawer long-press target: rename in place or delete (tombstone).
+        labelDialog?.let { lab ->
+            var draft by remember(lab.id) { mutableStateOf(lab.name) }
+            AlertDialog(
+                onDismissRequest = { labelDialog = null },
+                title = { Text("Edit label") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            label = { Text("Label name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("labelNameField"),
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onRenameLabel(lab.id, draft)
+                            labelDialog = null
+                        },
+                        enabled = draft.isNotBlank(),
+                    ) { Text("Rename") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onDeleteLabel(lab.id)
+                        labelDialog = null
+                    }) { Text("Delete") }
                 },
             )
         }
@@ -725,7 +886,152 @@ private fun AttachmentStrip(attachments: List<Attachment>) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Drop slot for a dragged note card: Archive, Trash, or one label.
+ */
+sealed interface NoteDropTarget {
+    data object Archive : NoteDropTarget
+    data object Trash : NoteDropTarget
+    data class LabelDrop(val labelId: String) : NoteDropTarget
+}
+
+/**
+ * Routes a card drop through the same mutations as the card buttons:
+ * archive/trash go to their callbacks, a label goes through the
+ * label-save callback. Unknown or already-attached labels are no-ops.
+ */
+fun applyNoteDrop(
+    target: NoteDropTarget,
+    note: Note,
+    labels: List<Label>,
+    onArchive: (Note) -> Unit,
+    onTrash: (Note) -> Unit,
+    onAddLabel: (Note, Label) -> Unit,
+) {
+    when (target) {
+        NoteDropTarget.Archive -> onArchive(note)
+        NoteDropTarget.Trash -> onTrash(note)
+        is NoteDropTarget.LabelDrop -> {
+            val lab = labels.firstOrNull { it.id == target.labelId } ?: return
+            if (lab.id !in note.labelIds) onAddLabel(note, lab)
+        }
+    }
+}
+
+/**
+ * Filing bar shown while a note card is dragged. Public for the
+ * drag-to-file instrumented test; the app only uses it through
+ * NotesScreen.
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
+fun NoteDropTargets(
+    labels: List<Label>,
+    onDrop: (NoteDropTarget) -> Unit,
+    onCancel: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 6.dp,
+        modifier = modifier.testTag("DropTargets"),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            DropChip(
+                target = NoteDropTarget.Archive,
+                icon = Icons.Filled.Archive,
+                text = "Archive",
+                contentDescription = "Drop on Archive",
+                onDrop = onDrop,
+                onDragEnd = onCancel,
+            )
+            DropChip(
+                target = NoteDropTarget.Trash,
+                icon = Icons.Filled.Delete,
+                text = "Trash",
+                contentDescription = "Drop on Trash",
+                onDrop = onDrop,
+                onDragEnd = onCancel,
+            )
+            for (lab in labels) {
+                DropChip(
+                    target = NoteDropTarget.LabelDrop(lab.id),
+                    icon = Icons.Filled.Label,
+                    text = lab.name,
+                    contentDescription = "Drop on label ${lab.name}",
+                    onDrop = onDrop,
+                    onDragEnd = onCancel,
+                )
+            }
+            // Dismisses the bar when the drag is cancelled outside a target.
+            IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Hide drop targets",
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DropChip(
+    target: NoteDropTarget,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    contentDescription: String,
+    onDrop: (NoteDropTarget) -> Unit,
+    onDragEnd: () -> Unit = {},
+) {
+    var hovered by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (hovered) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        modifier = Modifier.dragAndDropTarget(
+            shouldStartDragAndDrop = { true },
+            target = object : DragAndDropTarget {
+                override fun onEntered(event: DragAndDropEvent) {
+                    hovered = true
+                }
+
+                override fun onExited(event: DragAndDropEvent) {
+                    hovered = false
+                }
+
+                override fun onEnded(event: DragAndDropEvent) {
+                    hovered = false
+                    onDragEnd()
+                }
+
+                override fun onDrop(event: DragAndDropEvent): Boolean {
+                    hovered = false
+                    onDrop(target)
+                    return true
+                }
+            },
+        ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(text)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun NoteCard(
     note: Note,
@@ -740,15 +1046,24 @@ private fun NoteCard(
     onTrash: () -> Unit,
     onRestore: () -> Unit,
     onDeleteForever: () -> Unit,
+    onDragStart: (Note) -> Unit = {},
 ) {
     val attached = remember(note.labelIds, labels) {
         note.labelIds.mapNotNull { id -> labels.firstOrNull { it.id == id } }
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = noteColor(note.color, dark)),
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(
-            onClick = onOpen,
-        ),
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            // Long-press starts a system drag (the node detects it and
+            // calls this factory for the payload; the drop bar appears via
+            // onDragStart). Plain tap still opens the editor below.
+            .dragAndDropSource(transferData = {
+                onDragStart(note)
+                DragAndDropTransferData(
+                    ClipData.newPlainText("Keeps note", note.id),
+                )
+            })
+            .combinedClickable(onClick = onOpen),
     ) {
         Column(Modifier.padding(12.dp).animateContentSize()) {
             if (note.title.isNotBlank()) {
@@ -846,6 +1161,8 @@ fun NoteDialog(
     initialAttachments: List<Attachment> = emptyList(),
     allLabels: List<Label> = emptyList(),
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
+    /** Composer opened from the Reminders filter starts with the date picker open. */
+    startWithReminderPicker: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (String, String, String, List<String>, Long?, String?, List<ChecklistItem>?, List<Attachment>) -> Unit,
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
@@ -862,7 +1179,7 @@ fun NoteDialog(
     var labelPickerOpen by remember { mutableStateOf(false) }
     var newLabelName by remember { mutableStateOf("") }
     var pendingSelect by remember { mutableStateOf<String?>(null) }
-    var showDate by remember { mutableStateOf(false) }
+    var showDate by remember { mutableStateOf(startWithReminderPicker) }
     var showTime by remember { mutableStateOf(false) }
     var pendingDate by remember { mutableStateOf(0L) }
     // Structured checklist rows; null = plain text body mode.

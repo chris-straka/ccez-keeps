@@ -9,6 +9,9 @@ import androidx.room.Query
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.cstraka.keeps.sync.Label
+import dev.cstraka.keeps.sync.applyLabelDelete
+import dev.cstraka.keeps.sync.applyLabelRename
+import dev.cstraka.keeps.sync.isLabel
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -54,6 +57,27 @@ interface LabelDao {
 
     @Query("DELETE FROM labels WHERE id = :id")
     suspend fun dropLocal(id: String)
+}
+
+/**
+ * Drawer long-press mutations. Both write Room first (instant UI via Flow)
+ * with a fresh updatedAt so the row sits above the labels push-mark and
+ * converges over the existing `/api/labels` lane — no new endpoints.
+ */
+
+/** Rename a label; null when the id is unknown or the name is blank. */
+suspend fun LocalStore.renameLabel(id: String, name: String): Label? {
+    val current = labelById(id) ?: return null
+    val updated = applyLabelRename(current, name, System.currentTimeMillis()) ?: return null
+    if (!isLabel(updated)) return null
+    putLabel(updated)
+    return updated
+}
+
+/** Soft-delete a label; notes holding the id keep it inert (no cascade). */
+suspend fun LocalStore.deleteLabel(id: String) {
+    val current = labelById(id) ?: return
+    putLabel(applyLabelDelete(current, System.currentTimeMillis()))
 }
 
 /**

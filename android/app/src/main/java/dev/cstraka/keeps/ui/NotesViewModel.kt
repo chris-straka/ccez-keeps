@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cstraka.keeps.auth.AuthStore
 import dev.cstraka.keeps.data.LocalStore
+import dev.cstraka.keeps.data.deleteLabel
+import dev.cstraka.keeps.data.renameLabel
 import dev.cstraka.keeps.data.NoteEntity
 import dev.cstraka.keeps.data.toDrawing
 import dev.cstraka.keeps.data.toLabel
@@ -21,6 +23,8 @@ import dev.cstraka.keeps.sync.ReminderWorker
 import dev.cstraka.keeps.sync.isAgendaNote
 import dev.cstraka.keeps.sync.isNewer
 import dev.cstraka.keeps.sync.isNote
+import dev.cstraka.keeps.sync.mergeImportNotes
+import dev.cstraka.keeps.sync.parseExport
 import dev.cstraka.keeps.sync.parseLatestTag
 import dev.cstraka.keeps.sync.sortAgenda
 import dev.cstraka.keeps.sync.SyncEngine
@@ -295,6 +299,52 @@ class NotesViewModel(
         val label = store.createLabel(trimmed)
         touch()
         onDone(label)
+    }
+
+    /** Drawer long-press rename; blank names are a no-op (UI disables). */
+    fun renameLabel(id: String, name: String) = viewModelScope.launch {
+        if (store.renameLabel(id, name) != null) touch()
+    }
+
+    /** Drawer long-press delete; clears the drawer filter when it pointed here. */
+    fun deleteLabel(id: String) = viewModelScope.launch {
+        store.deleteLabel(id)
+        if (labelFilter.value == id) labelFilter.value = null
+        touch()
+    }
+
+    /**
+     * Backup import from Settings. Parses the same `{version: 1, notes}`
+     * shape [exportNotes] writes, merges LWW per id, and stamps only the
+     * changed rows fresh so the push lane picks them up as dirty.
+     */
+    fun importJson(raw: String) = viewModelScope.launch {
+        val incoming = try {
+            parseExport(raw).notes
+        } catch (_: Exception) {
+            _settingsMessage.value = "Couldn't read that backup — is it a Keeps export?"
+            return@launch
+        }
+        if (incoming.isEmpty()) {
+            _settingsMessage.value = "No notes found in that file."
+            return@launch
+        }
+        val current = store.all()
+        val merged = mergeImportNotes(current, incoming)
+        val before = current.associateBy { it.id }
+        val stamp = now()
+        val changed = merged.filter { before[it.id] != it }.map { it.copy(updatedAt = stamp) }
+        if (changed.isEmpty()) {
+            _settingsMessage.value = "Already up to date — nothing to import."
+            return@launch
+        }
+        store.putAll(changed)
+        touch()
+        _settingsMessage.value = if (changed.size == 1) {
+            "Imported 1 note."
+        } else {
+            "Imported ${changed.size} notes."
+        }
     }
 
     private fun refreshReminder(note: Note) {

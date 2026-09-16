@@ -74,3 +74,23 @@ fun mergeLabelLists(a: List<Label>, b: List<Label>): List<Label> {
 /** Rows with updatedAt strictly greater than [since] (delta-pull cursor). */
 fun labelsChangedSince(labels: List<Label>, since: Long): List<Label> =
     labels.filter { it.updatedAt > since }
+
+/**
+ * Rename target for the drawer long-press dialog. Trims and caps the name
+ * at [LabelLimits.MAX_NAME_LENGTH] like the server; null means the dialog
+ * stays open (blank name). The fresh [now] stamp marks the row dirty for
+ * the `/api/labels` push lane. Never mutates the input.
+ */
+fun applyLabelRename(label: Label, name: String, now: Long): Label? {
+    val trimmed = name.trim().take(LabelLimits.MAX_NAME_LENGTH)
+    if (trimmed.isEmpty()) return null
+    return label.copy(name = trimmed, updatedAt = now)
+}
+
+/**
+ * Tombstone for the drawer long-press dialog. Rides the existing
+ * `/api/labels` upserts+tombstones split; notes keep dangling ids inert.
+ * Never mutates the input.
+ */
+fun applyLabelDelete(label: Label, now: Long): Label =
+    label.copy(deleted = true, updatedAt = now)

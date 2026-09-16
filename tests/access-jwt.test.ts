@@ -91,6 +91,27 @@ describe("verifyAccessJwt", () => {
       await verifyAccessJwt(wrongAud, { certs, aud: AUD, nowSec: NOW }),
     ).toEqual({ ok: false, message: "wrong audience" });
 
+    // Access mints `aud` as an array: accept when it contains the app AUD.
+    const arrayAud = await signJwt(
+      privateKey,
+      { alg: "RS256", kid: "k1" },
+      payload({ aud: ["other-app", AUD] }),
+    );
+    expect(await verifyAccessJwt(arrayAud, { certs, aud: AUD, nowSec: NOW })).toEqual({
+      ok: true,
+      email: "user@example.com",
+    });
+
+    // ...but an array without the app AUD is another app's token: reject.
+    const foreignAud = await signJwt(
+      privateKey,
+      { alg: "RS256", kid: "k1" },
+      payload({ aud: ["other-app"] }),
+    );
+    expect(
+      await verifyAccessJwt(foreignAud, { certs, aud: AUD, nowSec: NOW }),
+    ).toEqual({ ok: false, message: "wrong audience" });
+
     expect(
       await verifyAccessJwt(good, {
         certs: new Map(),

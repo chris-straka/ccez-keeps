@@ -81,7 +81,14 @@ export async function verifyAccessJwt(
   if (typeof claims.exp !== "number" || claims.exp <= opts.nowSec) {
     return { ok: false, message: "expired" };
   }
-  if (claims.aud !== opts.aud) {
+  // Access mints `aud` as an array of audience tags (RFC 7519 allows a
+  // string or an array of strings). Accept either shape, but the expected
+  // application AUD must always be present — a token for another app in
+  // the same account shares the team certs and must not pass.
+  const audOk = Array.isArray(claims.aud)
+    ? claims.aud.includes(opts.aud)
+    : claims.aud === opts.aud;
+  if (!audOk) {
     return { ok: false, message: "wrong audience" };
   }
   if (typeof claims.email !== "string" || claims.email.length === 0) {

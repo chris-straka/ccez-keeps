@@ -684,6 +684,12 @@ export class KeepsApp extends HTMLElement {
         <div class="setting-row">
           <div><strong>Shortcuts</strong><p class="panel-sub"><kbd>M</kbd> menu · <kbd>/</kbd> search · <kbd>Ctrl/⌘ Z</kbd> undo in the editor.</p></div>
         </div>
+        <div class="setting-row">
+          <div><strong>About</strong><p class="panel-sub">Keeps is open source.</p></div>
+          <div class="setting-actions">
+            <a href="https://github.com/chris-straka/ccez-keeps" target="_blank" rel="noopener">GitHub</a>
+          </div>
+        </div>
       </div>`;
   }
 

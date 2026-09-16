@@ -1109,6 +1109,20 @@ kbd {
   display: flex;
   gap: 8px;
   flex: none;
+  align-items: center;
+}
+
+.setting-actions a {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+
+.setting-actions a:hover {
+  background: var(--surface);
 }
 
 /* Active label filter chip above the grid; click clears it. */

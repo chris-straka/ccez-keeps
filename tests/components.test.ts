@@ -1071,6 +1071,9 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     expect(t.app.querySelector("[data-export]")).not.toBeNull();
     expect(t.app.querySelector(".import-file")).not.toBeNull();
     expect(t.app.querySelector(".panel")?.textContent).toContain("Shortcuts");
+    const repo = t.app.querySelector<HTMLAnchorElement>('.setting-actions a[href*="github.com"]');
+    expect(repo?.href).toBe("https://github.com/chris-straka/ccez-keeps");
+    expect(repo?.target).toBe("_blank");
     t.cleanup();
   });
 

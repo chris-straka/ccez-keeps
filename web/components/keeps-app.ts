@@ -30,25 +30,40 @@ const ICONS: Record<NoteView, string> = {
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4"/><line x1="6.5" y1="6.5" x2="6.5" y2="11"/><line x1="9.5" y1="6.5" x2="9.5" y2="11"/></svg>',
   reminders:
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2a4 4 0 0 1 4 4c0 3 1 4 1 4H3s1-1 1-4a4 4 0 0 1 4-4z"/><line x1="6.5" y1="12.5" x2="9.5" y2="12.5"/></svg>',
+  labels:
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 2.5h4l7 7-4 4-7-7z"/><circle cx="6" cy="6" r="1"/></svg>',
+  devices:
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><line x1="7" y1="12.5" x2="9" y2="12.5"/></svg>',
+  settings:
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2L3.4 12.6"/></svg>',
 };
+
+export const TAG_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 2.5h4l7 7-4 4-7-7z"/><circle cx="6" cy="6" r="1"/></svg>';
 
 const NAV_ICON =
   '<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg>';
+
+const LIST_ICON =
+  '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><line x1="5" y1="4" x2="14" y2="4"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12" x2="14" y2="12"/><circle cx="2.5" cy="4" r="0.8" fill="currentColor"/><circle cx="2.5" cy="8" r="0.8" fill="currentColor"/><circle cx="2.5" cy="12" r="0.8" fill="currentColor"/></svg>';
+
+const GRID_ICON =
+  '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>';
 
 const VIEWS: { id: NoteView; label: string }[] = [
   { id: "notes", label: "Notes" },
   { id: "reminders", label: "Reminders" },
   { id: "archive", label: "Archive" },
   { id: "trash", label: "Trash" },
+  { id: "labels", label: "Labels" },
+  { id: "devices", label: "Devices" },
+  { id: "settings", label: "Settings" },
 ];
-
-const DEVICE_ICON =
-  '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><line x1="7" y1="12.5" x2="9" y2="12.5"/></svg>';
 
 export type Theme = "light" | "dark";
 
 const THEME_ICONS: Record<Theme, string> = {
-  // Shown is the theme you will get: sun in the dark, moon in the light.
+  // Shown is the CURRENT theme: moon in the dark, sun in the light.
   light:
     '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="3.5"/><line x1="8" y1="1" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15"/><line x1="1" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15" y2="8"/><line x1="3" y1="3" x2="4" y2="4"/><line x1="12" y1="12" x2="13" y2="13"/><line x1="3" y1="13" x2="4" y2="12"/><line x1="12" y1="4" x2="13" y2="3"/></svg>',
   dark:
@@ -68,8 +83,18 @@ export class KeepsApp extends HTMLElement {
   private navOpen = false;
   private unsub: (() => void) | undefined;
   private devices: DevicesClient | undefined;
-  private devicesOpen = false;
   private devicesCache: DeviceInfo[] | null = null;
+  /** Grid vs list layout for note buckets; persisted per browser. */
+  private listMode = false;
+  private onHashChange = (): void => {
+    const next = KeepsApp.viewFromHash(this.ownerDocument.location?.hash ?? "");
+    if (next && next !== this.view) {
+      this.editingId = null;
+      this.view = next;
+      this.emptyArmed = false;
+      void this.refresh();
+    }
+  };
   private toast: { message: string; undo: boolean; viewId?: string } | null = null;
   private pendingDelete: Note | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -81,6 +106,8 @@ export class KeepsApp extends HTMLElement {
   };
   private labels: LabelsStore | undefined;
   private labelCache: Label[] = [];
+  /** Live (non-deleted) note counts per label id, for the Labels panel. */
+  private labelCounts: Record<string, number> = {};
   private activeLabelId: string | null = null;
   private editingLabelId: string | null = null;
   private labelsUnsub: (() => void) | undefined;
@@ -133,8 +160,75 @@ export class KeepsApp extends HTMLElement {
     this.addEventListener("click", (event) => this.onClick(event));
     this.addEventListener("input", (event) => this.onInput(event));
     this.addEventListener("change", (event) => this.onChange(event));
+    this.addEventListener("dragstart", (event) => this.onDragStart(event));
+    this.addEventListener("dragover", (event) => this.onDragOver(event));
+    this.addEventListener("dragleave", (event) => this.onDragLeave(event));
+    this.addEventListener("drop", (event) => {
+      void this.onDrop(event as DragEvent);
+    });
+    // Deep-linkable views: `#/reminders` opens the agenda, back returns.
+    const routed = KeepsApp.viewFromHash(
+      this.ownerDocument.location?.hash ?? "",
+    );
+    if (routed) this.view = routed;
+    this.ownerDocument.defaultView?.addEventListener("hashchange", this.onHashChange);
+    try {
+      this.listMode = globalThis.localStorage?.getItem("keeps-list") === "1";
+    } catch {
+      this.listMode = false;
+    }
     this.initTheme();
     await this.refresh();
+  }
+
+  /** Hamburger + the `M` shortcut. Public so the boot key handler can use it. */
+  toggleNav(): void {
+    this.navOpen = !this.navOpen;
+    this.querySelector(".layout")?.classList.toggle("nav-open", this.navOpen);
+    this.querySelector("[data-nav]")?.setAttribute(
+      "aria-expanded",
+      String(this.navOpen),
+    );
+  }
+
+  /** Narrow viewports overlay the drawer; keep it open on desktop. */
+  private isNarrow(): boolean {
+    try {
+      return (
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 760px)").matches
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Write the view to the URL without re-rendering (nav already did). */
+  private setHash(view: NoteView): void {
+    try {
+      const win = this.ownerDocument.defaultView;
+      if (!win) return;
+      const next = `#/${view}`;
+      if (win.location.hash !== next) win.location.hash = next;
+    } catch {
+      // Hash routing is a nicety; navigation works without it.
+    }
+  }
+
+  /** `#/notes` … `#/settings`; unknown hashes fall back to notes. */
+  private static viewFromHash(hash: string): NoteView | null {
+    const id = hash.replace(/^#\/?/, "").split("?")[0] ?? "";
+    const known: NoteView[] = [
+      "notes",
+      "reminders",
+      "archive",
+      "trash",
+      "labels",
+      "devices",
+      "settings",
+    ];
+    return (known as string[]).includes(id) ? (id as NoteView) : null;
   }
 
   /** Theme: stored choice wins, otherwise the OS preference (followed live). */
@@ -171,14 +265,14 @@ export class KeepsApp extends HTMLElement {
 
   private applyTheme(): void {
     this.ownerDocument.documentElement.dataset["theme"] = this.theme;
+    // The toggle shows the CURRENT theme (moon in the dark) with a label.
     const button = this.querySelector(".theme-toggle");
     if (button) {
-      const next = this.theme === "dark" ? "light" : "dark";
       button.setAttribute(
         "aria-label",
         this.theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
       );
-      button.innerHTML = THEME_ICONS[next] ?? "";
+      button.innerHTML = `${THEME_ICONS[this.theme] ?? ""}<span>${this.theme === "dark" ? "Dark mode" : "Light mode"}</span>`;
     }
   }
 
@@ -202,6 +296,7 @@ export class KeepsApp extends HTMLElement {
       this.dueTimer = undefined;
     }
     this.ownerDocument.removeEventListener("visibilitychange", this.onVisible);
+    this.ownerDocument.defaultView?.removeEventListener("hashchange", this.onHashChange);
   }
 
   private requireLabels(): LabelsStore {
@@ -385,6 +480,12 @@ export class KeepsApp extends HTMLElement {
       ? await store.search(this.query, this.view, this.labelNameMap())
       : await store.list(this.view);
     const notes = this.applyLabelFilter(found);
+    const counts: Record<string, number> = {};
+    for (const n of await store.all()) {
+      if (n.deleted) continue;
+      for (const id of n.labelIds ?? []) counts[id] = (counts[id] ?? 0) + 1;
+    }
+    this.labelCounts = counts;
     const doc = this.ownerDocument;
     const searchHadFocus =
       doc.activeElement?.classList?.contains("search") ?? false;
@@ -395,7 +496,7 @@ export class KeepsApp extends HTMLElement {
     const stash = this.stashDialogs();
     this.renderShell();
     this.renderGrid(notes);
-    if (this.devicesOpen) {
+    if (this.view === "devices") {
       await this.paintDevices();
     }
     this.restoreDialogs(stash);
@@ -457,61 +558,53 @@ export class KeepsApp extends HTMLElement {
   }
 
   private renderShell(): void {
+    const showComposer = this.view === "notes" || this.view === "reminders";
     this.innerHTML = `
       <header class="topbar">
-        <button class="nav-toggle" data-nav="toggle" aria-label="Toggle navigation" aria-expanded="${this.navOpen}">${NAV_ICON}</button>
-        <input class="search" placeholder="Search notes" aria-label="Search notes" value="${escapeHtml(this.query)}" />
-        <button class="theme-toggle" data-theme-toggle aria-label="${this.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}">${this.theme === "dark" ? THEME_ICONS["light"] : THEME_ICONS["dark"]}</button>
-        <button class="new-note" data-new="open">+ New</button>
+        <button class="nav-toggle" data-nav="toggle" aria-label="Toggle navigation (M)" title="Menu (M)" aria-expanded="${this.navOpen}">${NAV_ICON}</button>
+        <div class="search-wrap">
+          <input class="search" placeholder="Search notes  ( / )" aria-label="Search notes" value="${escapeHtml(this.query)}" />
+        </div>
+        ${this.isBucketView() ? `<button class="layout-toggle" data-layout-toggle aria-label="${this.listMode ? "Grid view" : "List view"}" title="${this.listMode ? "Grid view" : "List view"}">${this.listMode ? GRID_ICON : LIST_ICON}</button>` : ""}
+        <button class="new-note" data-new="open">${this.view === "reminders" ? "+ New reminder" : "+ New"}</button>
       </header>
       <div class="layout${this.navOpen ? " nav-open" : ""}">
         <nav class="sidebar" aria-label="Views">
-          ${VIEWS.map(
-            (v) =>
-              `<button data-view="${v.id}"${v.id === this.view && !this.devicesOpen ? ' aria-current="page"' : ""}>${ICONS[v.id]}<span>${v.label}</span></button>`,
-          ).join("")}
-          <button data-view="devices"${this.devicesOpen ? ' aria-current="page"' : ""}>${DEVICE_ICON}<span>Devices</span></button>
-          <div class="sidebar-labels" aria-label="Labels">
-            <div class="sidebar-labels-head"><span>Labels</span></div>
-            ${this.labelCache
-              .map((l) =>
-                this.editingLabelId === l.id
-                  ? `<div class="label-row" data-label-row="${escapeHtml(l.id)}">
-                       <input class="label-rename-input" value="${escapeHtml(l.name)}" maxlength="120" aria-label="Label name" />
-                       <button data-label-rename-save="${escapeHtml(l.id)}">Save</button>
-                       <button data-label-rename-cancel>Cancel</button>
-                     </div>`
-                  : `<div class="label-row" data-label-row="${escapeHtml(l.id)}">
-                       <button data-label-filter="${escapeHtml(l.id)}"${l.id === this.activeLabelId ? ' aria-current="page" class="is-active"' : ""}>${escapeHtml(l.name)}</button>
-                       <button data-label-rename="${escapeHtml(l.id)}" title="Rename label">Rename</button>
-                       <button data-label-delete="${escapeHtml(l.id)}" title="Delete label">Delete</button>
-                     </div>`,
-              )
-              .join("")}
-            <div class="label-create-row">
-              <input class="label-create-input" placeholder="New label" maxlength="120" aria-label="New label name" />
-              <button data-label-create>Create</button>
-            </div>
-          </div>
+          ${VIEWS.map((v) => {
+            const droppable = v.id === "notes" || v.id === "archive" || v.id === "trash";
+            return `<button data-view="${v.id}"${droppable ? ` data-drop="${v.id}"` : ""}${v.id === this.view ? ' aria-current="page"' : ""}>${ICONS[v.id]}<span>${v.label}</span></button>`;
+          }).join("")}
           <div class="sidebar-footer">
-            <button data-export>Export</button>
-            <button data-import>Import</button>
-            <input class="import-file" type="file" accept="application/json,.json" hidden />
+            <button class="theme-toggle" data-theme-toggle></button>
+            <div class="nav-hint"><kbd>M</kbd> menu · <kbd>/</kbd> search</div>
           </div>
         </nav>
         <main class="content">
-          ${
-            this.devicesOpen
-              ? this.devicesHtml()
-              : `${this.view === "notes" ? this.composerHtml() : ""}
-          <div class="sync-status" role="status"></div>
-          <div class="grid"></div>`
-          }
+          ${this.panelHtml(showComposer)}
         </main>
       </div>
       ${this.toastHtml()}
       <note-editor></note-editor>
       <drawing-dialog></drawing-dialog>`;
+    this.applyTheme();
+  }
+
+  private isBucketView(): boolean {
+    return (
+      this.view === "notes" ||
+      this.view === "reminders" ||
+      this.view === "archive" ||
+      this.view === "trash"
+    );
+  }
+
+  private panelHtml(showComposer: boolean): string {
+    if (this.view === "devices") return this.devicesHtml();
+    if (this.view === "labels") return this.labelsHtml();
+    if (this.view === "settings") return this.settingsHtml();
+    return `${showComposer ? this.composerHtml() : ""}
+      <div class="sync-status" role="status"></div>
+      <div class="grid${this.listMode ? " is-list" : ""}"></div>`;
   }
 
   private composerHtml(): string {
@@ -541,6 +634,56 @@ export class KeepsApp extends HTMLElement {
         signs out that phone without affecting anything else.</p>
         <div class="device-list"></div>
         <div class="devices-status" role="status"></div>
+      </div>`;
+  }
+
+  /** Label manager: filter, rename, delete, create — with live counts. */
+  private labelsHtml(): string {
+    const counts = this.labelCounts;
+    const rows = this.labelCache
+      .map((l) =>
+        this.editingLabelId === l.id
+          ? `<div class="label-row" data-label-row="${escapeHtml(l.id)}">
+               ${TAG_ICON}
+               <input class="label-rename-input" value="${escapeHtml(l.name)}" maxlength="120" aria-label="Label name" />
+               <button data-label-rename-save="${escapeHtml(l.id)}">Save</button>
+               <button data-label-rename-cancel>Cancel</button>
+             </div>`
+          : `<div class="label-row" data-label-row="${escapeHtml(l.id)}" data-drop-label="${escapeHtml(l.id)}">
+               <button data-label-filter="${escapeHtml(l.id)}"${l.id === this.activeLabelId ? ' aria-current="page" class="is-active"' : ""}>${TAG_ICON}<span>${escapeHtml(l.name)}</span><span class="label-count">${counts[l.id] ?? 0}</span></button>
+               <button data-label-rename="${escapeHtml(l.id)}" title="Rename label">Rename</button>
+               <button data-label-delete="${escapeHtml(l.id)}" title="Delete label">Delete</button>
+             </div>`,
+      )
+      .join("");
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>Labels</h2></div>
+        <p class="panel-sub">Filter the grid, rename, or delete. Drop a note
+        on a label to file it there.</p>
+        <div class="label-list" aria-label="Labels">${rows || `<div class="empty">No labels yet.</div>`}</div>
+        <div class="label-create-row">
+          <input class="label-create-input" placeholder="New label" maxlength="120" aria-label="New label name" />
+          <button data-label-create>Create</button>
+        </div>
+      </div>`;
+  }
+
+  private settingsHtml(): string {
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>Settings</h2></div>
+        <div class="setting-row">
+          <div><strong>Backup</strong><p class="panel-sub">Download every note as JSON, or restore from a backup file.</p></div>
+          <div class="setting-actions">
+            <button data-export>Export</button>
+            <button data-import>Import</button>
+            <input class="import-file" type="file" accept="application/json,.json" hidden />
+          </div>
+        </div>
+        <div class="setting-row">
+          <div><strong>Shortcuts</strong><p class="panel-sub"><kbd>M</kbd> menu · <kbd>/</kbd> search · <kbd>Ctrl/⌘ Z</kbd> undo in the editor.</p></div>
+        </div>
       </div>`;
   }
 
@@ -677,6 +820,13 @@ export class KeepsApp extends HTMLElement {
       head.append(count, empty);
       grid.appendChild(head);
     }
+    if (this.activeLabelId) {
+      const name = this.labelNameMap()[this.activeLabelId] ?? "Label";
+      const chip = doc.createElement("div");
+      chip.className = "filter-chip-row";
+      chip.innerHTML = `<button class="filter-chip" data-label-filter="${escapeHtml(this.activeLabelId)}">${TAG_ICON}<span>${escapeHtml(name)}</span><span aria-hidden="true">×</span></button>`;
+      grid.appendChild(chip);
+    }
     const names = this.labelNameMap();
     const colors = this.labelColorMap();
     for (const note of notes) {
@@ -684,6 +834,8 @@ export class KeepsApp extends HTMLElement {
       (el as unknown as { labelNames: Record<string, string> }).labelNames = names;
       (el as unknown as { labelColors: Record<string, string> }).labelColors = colors;
       (el as unknown as { note: Note }).note = note;
+      el.setAttribute("draggable", "true");
+      el.dataset["noteId"] = note.id;
       grid.appendChild(el);
     }
     if (notes.length === 0) {
@@ -699,13 +851,21 @@ export class KeepsApp extends HTMLElement {
     }
   }
 
-  private openEditor(id: string | null, draft: NoteDraft): void {
+  private openEditor(
+    id: string | null,
+    draft: NoteDraft,
+    opts?: { focusReminder?: boolean },
+  ): void {
     this.editingId = id;
     (
       this.querySelector("note-editor") as unknown as {
-        open: (draft: NoteDraft, labels?: LabelOption[]) => void;
+        open: (
+          draft: NoteDraft,
+          labels?: LabelOption[],
+          opts?: { focusReminder?: boolean },
+        ) => void;
       }
-    ).open(draft, this.labelOptions());
+    ).open(draft, this.labelOptions(), opts);
   }
 
   private onLabelClick(button: HTMLElement): boolean {
@@ -727,6 +887,11 @@ export class KeepsApp extends HTMLElement {
     if (filterId !== undefined) {
       this.activeLabelId = filterId === this.activeLabelId ? null : filterId;
       buzz("tap");
+      // Filtering shows the grid, wherever it was picked.
+      if (this.view === "labels" || this.view === "settings" || this.view === "devices") {
+        this.view = "notes";
+        this.setHash("notes");
+      }
       void this.refresh();
       return true;
     }
@@ -779,31 +944,42 @@ export class KeepsApp extends HTMLElement {
       // Class toggle only: a full refresh would wipe an open editor,
       // the composer draft, and search focus. renderShell() still stamps
       // the persisted navOpen on full re-renders.
-      this.navOpen = !this.navOpen;
-      this.querySelector(".layout")?.classList.toggle("nav-open", this.navOpen);
-      navBtn.setAttribute("aria-expanded", String(this.navOpen));
+      this.toggleNav();
       return;
     }
     const newBtn = target.closest("[data-new]");
     if (newBtn) {
-      this.openEditor(null, { title: "", body: "", color: "default" });
+      // From the agenda the new note is a reminder: land on its time field.
+      this.openEditor(
+        null,
+        { title: "", body: "", color: "default" },
+        this.view === "reminders" ? { focusReminder: true } : undefined,
+      );
+      return;
+    }
+    const layoutBtn = target.closest("[data-layout-toggle]");
+    if (layoutBtn) {
+      this.listMode = !this.listMode;
+      try {
+        globalThis.localStorage?.setItem("keeps-list", this.listMode ? "1" : "0");
+      } catch {
+        // Layout sticks for the session; persistence is a nicety.
+      }
+      buzz("tap");
+      void this.refresh();
       return;
     }
     const viewBtn = target.closest("[data-view]");
     if (viewBtn) {
-      const id = (viewBtn as HTMLElement).dataset["view"];
+      const id = (viewBtn as HTMLElement).dataset["view"] as NoteView;
       this.editingId = null;
-      this.navOpen = false;
-      if (id === "devices") {
-        this.devicesOpen = true;
-        this.devicesCache = null;
-        void this.refresh();
-        return;
-      }
-      this.view = id as NoteView;
-      this.devicesOpen = false;
+      // Mobile overlays the drawer; desktop keeps it open.
+      if (this.isNarrow()) this.navOpen = false;
+      this.view = id;
+      if (id === "devices") this.devicesCache = null;
       this.emptyArmed = false;
       window.clearTimeout(this.emptyTrashTimer);
+      this.setHash(id);
       void this.refresh();
       return;
     }
@@ -867,6 +1043,68 @@ export class KeepsApp extends HTMLElement {
     if (target.classList.contains("import-file")) {
       void this.onImportFile(target as HTMLInputElement);
     }
+  }
+
+  /** Drag cards onto sidebar views or label rows to file them there. */
+  private onDragStart(event: Event): void {
+    const e = event as DragEvent;
+    const card = (e.target as HTMLElement).closest("note-card") as HTMLElement | null;
+    const id = card?.dataset["noteId"];
+    if (!id || !e.dataTransfer) return;
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  private dropTarget(el: HTMLElement | null): HTMLElement | null {
+    return el?.closest("[data-drop],[data-drop-label]") as HTMLElement | null;
+  }
+
+  private onDragOver(event: Event): void {
+    const e = event as DragEvent;
+    const t = this.dropTarget(e.target as HTMLElement);
+    if (!t || !e.dataTransfer) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    t.classList.add("is-drop");
+  }
+
+  private onDragLeave(event: Event): void {
+    const t = this.dropTarget(event.target as HTMLElement);
+    // Only clear when truly leaving the target (children bubble dragleave).
+    const to = (event as DragEvent).relatedTarget as Node | null;
+    if (t && (!to || !t.contains(to))) t.classList.remove("is-drop");
+  }
+
+  private async onDrop(event: DragEvent): Promise<void> {
+    const t = this.dropTarget(event.target as HTMLElement);
+    const id = event.dataTransfer?.getData("text/plain");
+    this.querySelectorAll(".is-drop").forEach((el) => el.classList.remove("is-drop"));
+    if (!t || !id) return;
+    event.preventDefault();
+    const store = this.requireStore();
+    const note = await store.get(id);
+    if (!note || note.deleted) return;
+    const labelId = t.dataset["dropLabel"];
+    if (labelId !== undefined) {
+      const labelIds = note.labelIds ?? [];
+      if (!labelIds.includes(labelId)) {
+        await store.put({ ...note, labelIds: [...labelIds, labelId], updatedAt: Date.now() });
+        buzz("confirm");
+      }
+    } else if (t.dataset["drop"] === "trash") {
+      await store.remove(id);
+      buzz("destructive");
+    } else if (t.dataset["drop"] === "archive" && !note.archived) {
+      await store.put({ ...note, archived: true, updatedAt: Date.now() });
+      buzz("confirm");
+    } else if (t.dataset["drop"] === "notes" && (note.archived || note.deleted)) {
+      await store.restore(id);
+      buzz("confirm");
+    } else {
+      return;
+    }
+    this.sync?.schedulePush();
+    await this.refresh();
   }
 
   private onInput(event: Event): void {

@@ -46,11 +46,17 @@ async function main(): Promise<void> {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
     const active = document.activeElement as HTMLElement | null;
-    if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
-    event.preventDefault();
-    document.querySelector<HTMLInputElement>(".search")?.focus();
+    const typing =
+      !!active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+    if (event.key === "/" && !typing) {
+      event.preventDefault();
+      document.querySelector<HTMLInputElement>(".search")?.focus();
+    } else if ((event.key === "m" || event.key === "M") && !typing) {
+      event.preventDefault();
+      app.toggleNav();
+    }
   });
 
   if ("serviceWorker" in navigator) {

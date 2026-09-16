@@ -164,10 +164,28 @@ export class NoteEditor extends HTMLElement {
     this.addEventListener("keydown", (event) => {
       if (event.key === "Escape") this.close(false);
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") this.close(true);
+      // Desktop undo runs through the dialog history (checklist edits
+      // included); mobile keeps the toolbar buttons instead.
+      if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+        const key = event.key.toLowerCase();
+        if (key === "z" && !event.shiftKey) {
+          event.preventDefault();
+          this.step(-1);
+          buzz("tap");
+        } else if (key === "z" || key === "y") {
+          event.preventDefault();
+          this.step(1);
+          buzz("tap");
+        }
+      }
     });
   }
 
-  open(draft: NoteDraft | null, labels: LabelOption[] = []): void {
+  open(
+    draft: NoteDraft | null,
+    labels: LabelOption[] = [],
+    opts?: { focusReminder?: boolean },
+  ): void {
     const source = draft ?? { title: "", body: "", color: "default" };
     const selected = new Set(source.labelIds ?? []);
     this.history = [];
@@ -233,7 +251,11 @@ export class NoteEditor extends HTMLElement {
     this.paintBodyRegion(source.body);
     this.paintAttachments();
     this.push();
-    this.querySelector<HTMLInputElement>(".editor-title")?.focus();
+    if (opts?.focusReminder) {
+      this.querySelector<HTMLInputElement>(".editor-reminder")?.focus();
+    } else {
+      this.querySelector<HTMLInputElement>(".editor-title")?.focus();
+    }
   }
 
   private fields(): {

@@ -4,9 +4,22 @@
 // remove()/restore() stamp a fresh updatedAt themselves.
 import type { Note } from "../../shared/note.js";
 
-export type NoteView = "notes" | "archive" | "trash" | "reminders";
+export type NoteView =
+  | "notes"
+  | "archive"
+  | "trash"
+  | "reminders"
+  | "labels"
+  | "devices"
+  | "settings";
+
+/** Panels (labels/devices/settings) manage things; they never list notes. */
+export function isPanelView(view: NoteView): boolean {
+  return view === "labels" || view === "devices" || view === "settings";
+}
 
 export function inView(note: Note, view: NoteView): boolean {
+  if (isPanelView(view)) return false;
   if (view === "trash") return note.deleted;
   if (note.deleted) return false;
   // Agenda spans notes + archive: a firing reminder must not hide.

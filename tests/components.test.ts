@@ -38,6 +38,14 @@ function mount(initial: Note[] = [], devices?: InstanceType<typeof DevicesClient
   const deletedForever: string[] = [];
   let pushes = 0;
   const store = new MemoryStore(initial);
+  // Shared happy-dom document across tests: reset the URL so hash routing
+  // from a previous test never leaks into the next mount.
+  window.location.hash = "";
+  try {
+    window.localStorage.removeItem("keeps-list");
+  } catch {
+    // Storage is a nicety in tests too.
+  }
   const app = document.createElement("keeps-app") as KeepsApp;
   document.body.appendChild(app);
   const ready = app.connect(
@@ -106,6 +114,99 @@ describe("keeps-app", () => {
     await t.tick();
     expect(t.cards()).toHaveLength(1);
     expect(t.cards()[0]?.textContent).toContain("Old");
+    t.cleanup();
+  });
+
+  test("hash routes to views and nav writes the hash", async () => {
+    const t = mount([note({ id: "1", title: "Soon", reminderAt: 1000 })]);
+    await t.ready;
+    await t.tick();
+    window.location.hash = "#/reminders";
+    window.dispatchEvent(new Event("hashchange"));
+    await t.tick();
+    await t.tick();
+    expect(t.cards()).toHaveLength(1);
+    expect(
+      t.app.querySelector('[data-view="reminders"]')?.getAttribute("aria-current"),
+    ).toBe("page");
+    t.app.querySelector<HTMLButtonElement>('[data-view="notes"]')!.click();
+    await t.tick();
+    expect(window.location.hash).toBe("#/notes");
+    t.cleanup();
+  });
+
+  test("layout toggle switches grid/list and persists", async () => {
+    const t = mount([note({ id: "1", title: "A" })]);
+    await t.ready;
+    expect(t.app.querySelector(".grid")?.classList.contains("is-list")).toBe(false);
+    t.app.querySelector<HTMLButtonElement>("[data-layout-toggle]")!.click();
+    await t.tick();
+    expect(t.app.querySelector(".grid")?.classList.contains("is-list")).toBe(true);
+    expect(window.localStorage.getItem("keeps-list")).toBe("1");
+    t.cleanup();
+  });
+
+  test("sidebar theme toggle shows the current theme icon", async () => {
+    const t = mount();
+    await t.ready;
+    const btn = t.app.querySelector(".theme-toggle")!;
+    // Icon and label always agree, and a click flips the pair.
+    const before = btn.getAttribute("aria-label");
+    expect(["Switch to light theme", "Switch to dark theme"]).toContain(before);
+    expect(btn.textContent).toContain(
+      before === "Switch to light theme" ? "Dark mode" : "Light mode",
+    );
+    (btn as HTMLButtonElement).click();
+    const after = btn.getAttribute("aria-label");
+    expect(after).not.toBe(before);
+    expect(btn.textContent).toContain(
+      after === "Switch to light theme" ? "Dark mode" : "Light mode",
+    );
+    t.cleanup();
+  });
+
+  test("dragging a card onto archive files it there", async () => {
+    const t = mount([note({ id: "1", title: "File me" })]);
+    await t.ready;
+    await t.tick();
+    const card = t.cards()[0]!;
+    expect(card.getAttribute("draggable")).toBe("true");
+    const drop = new Event("drop", { bubbles: true }) as Event & {
+      dataTransfer: { getData: () => string };
+    };
+    drop.dataTransfer = { getData: () => "1" };
+    t.app.querySelector('[data-drop="archive"]')!.dispatchEvent(drop);
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("1"))?.archived).toBe(true);
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("reminders view offers a reminder-first composer", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="reminders"]')!.click();
+    await t.tick();
+    expect(t.app.querySelector("[data-new]")?.textContent).toBe("+ New reminder");
+    t.cleanup();
+  });
+
+  test("editor Ctrl+Z walks history without toolbar buttons", async () => {
+    const t = mount([note({ id: "1", title: "T", body: "one" })]);
+    await t.ready;
+    t.cards()[0]?.dispatchEvent(new Event("click", { bubbles: true }));
+    await t.tick();
+    const body = t.app.querySelector<HTMLTextAreaElement>(".editor-body")!;
+    body.value = "one two";
+    body.dispatchEvent(new Event("input", { bubbles: true }));
+    const editor = t.app.querySelector("note-editor")!;
+    editor.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }),
+    );
+    expect(
+      t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value,
+    ).toBe("one");
     t.cleanup();
   });
 
@@ -198,11 +299,12 @@ describe("keeps-app", () => {
     toggle.click();
     expect(t.app.querySelector(".layout")!.classList.contains("nav-open")).toBe(true);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    // Picking a view works from the opened drawer and closes it.
+    // Picking a view works from the opened drawer and keeps it open
+    // on desktop (it only auto-closes on narrow viewports).
     t.app.querySelector<HTMLButtonElement>('[data-view="notes"]')!.click();
     await t.tick();
     expect(t.cards()).toHaveLength(1);
-    expect(t.app.querySelector(".layout")!.classList.contains("nav-open")).toBe(false);
+    expect(t.app.querySelector(".layout")!.classList.contains("nav-open")).toBe(true);
     t.cleanup();
   });
 
@@ -773,6 +875,8 @@ describe("keeps-app", () => {
         clicks.push({ href: this.href, download: this.download });
       };
       try {
+        t.app.querySelector<HTMLButtonElement>('[data-view="settings"]')!.click();
+        await t.tick();
         t.app.querySelector<HTMLButtonElement>("[data-export]")!.click();
         await t.tick();
         await t.tick();
@@ -791,6 +895,8 @@ describe("keeps-app", () => {
     test("import round-trips a note and schedules a push", async () => {
       const t = mount();
       await t.ready;
+      t.app.querySelector<HTMLButtonElement>('[data-view="settings"]')!.click();
+      await t.tick();
       const payload = JSON.stringify({
         version: 1,
         notes: [note({ id: "imp1", title: "Imported" })],
@@ -868,6 +974,13 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     initial: Note[] = [],
     labelSeed: { id: string; name: string; color?: string }[] = [],
   ) {
+    // Same shared-document hygiene as mount(): hash routing must not leak.
+    window.location.hash = "";
+    try {
+      window.localStorage.removeItem("keeps-list");
+    } catch {
+      // Storage is a nicety in tests too.
+    }
     const { LabelsStore } = await import("../web/store/labels.js");
     (globalThis as unknown as Record<string, unknown>)["fetch"] = () => {
       throw new Error("components must not fetch");
@@ -927,7 +1040,38 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
-  test("sidebar label filter narrows the grid, shows active state, toggles off", async () => {
+  test("labels view lists labels with live counts", async () => {
+    const t = await mountWithLabels(
+      [
+        note({ id: "1", title: "Shop", labelIds: ["l1"] }),
+        note({ id: "2", title: "Read", labelIds: ["l1"] }),
+      ],
+      [{ id: "l1", name: "Errands" }],
+    );
+    await t.ready;
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
+    await t.tick();
+    const row = t.app.querySelector(".label-list .label-row");
+    expect(row?.textContent).toContain("Errands");
+    expect(row?.querySelector(".label-count")?.textContent).toBe("2");
+    expect(t.cards()).toHaveLength(0);
+    t.cleanup();
+  });
+
+  test("settings view hosts export and import", async () => {
+    const t = await mountWithLabels([], []);
+    await t.ready;
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-view="settings"]')!.click();
+    await t.tick();
+    expect(t.app.querySelector("[data-export]")).not.toBeNull();
+    expect(t.app.querySelector(".import-file")).not.toBeNull();
+    expect(t.app.querySelector(".panel")?.textContent).toContain("Shortcuts");
+    t.cleanup();
+  });
+
+  test("labels panel filter narrows the grid, chip clears it", async () => {
     const t = await mountWithLabels(
       [
         note({ id: "1", title: "Shop", labelIds: ["l1"] }),
@@ -938,14 +1082,16 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     await t.ready;
     await t.tick();
     expect(t.cards()).toHaveLength(2);
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
+    await t.tick();
     t.app.querySelector<HTMLButtonElement>('[data-label-filter="l1"]')!.click();
     await t.tick();
+    // Filtering jumps back to the grid with a clearing chip.
     expect(t.cards()).toHaveLength(1);
     expect(t.cards()[0]?.textContent).toContain("Shop");
-    expect(
-      t.app.querySelector('[data-label-filter="l1"]')?.classList.contains("is-active"),
-    ).toBe(true);
-    t.app.querySelector<HTMLButtonElement>('[data-label-filter="l1"]')!.click();
+    const chip = t.app.querySelector(".filter-chip");
+    expect(chip?.textContent).toContain("Errands");
+    (chip as HTMLButtonElement).click();
     await t.tick();
     expect(t.cards()).toHaveLength(2);
     t.cleanup();
@@ -971,9 +1117,11 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
-  test("sidebar create + rename + delete labels", async () => {
+  test("labels panel creates + renames + deletes labels", async () => {
     const t = await mountWithLabels([], [{ id: "l1", name: "Errands" }]);
     await t.ready;
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
     await t.tick();
     t.app.querySelector<HTMLInputElement>(".label-create-input")!.value = "Books";
     t.app.querySelector<HTMLButtonElement>("[data-label-create]")!.click();

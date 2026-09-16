@@ -19,8 +19,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 keeps-app {
@@ -41,12 +41,24 @@ keeps-app {
 }
 
 .nav-toggle,
-.theme-toggle {
+.layout-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
   border-color: transparent;
   padding: 8px;
+  flex: none;
+}
+
+.search-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.search-wrap .search {
+  width: 100%;
 }
 
 .new-note {
@@ -126,6 +138,9 @@ keeps-app {
   flex: 1;
   padding: 20px 24px 60px;
   min-width: 0;
+  max-width: 1120px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .composer-closed {
@@ -234,18 +249,28 @@ button:hover {
 }
 
 .grid {
-  columns: 240px auto;
-  column-gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.grid.is-list {
+  grid-template-columns: minmax(0, 680px);
+  justify-content: center;
 }
 
 note-card {
   display: block;
-  break-inside: avoid;
-  margin-bottom: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
   background: var(--surface);
+  cursor: grab;
+}
+
+note-card:active {
+  cursor: grabbing;
 }
 
 note-card[data-color="red"] { background: #4a2c2a; }
@@ -894,4 +919,302 @@ html[data-theme="light"] .label-chip[data-color="pink"] { color: #d01884; border
   font-size: 12px;
   color: var(--muted);
   margin-top: 6px;
+}
+
+/* Redesign wave: sidebar footer, panels, list mode, drag targets. */
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 8px 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  border-radius: 0 20px 20px 0;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 10px 16px;
+  text-align: left;
+  width: 100%;
+}
+
+.theme-toggle:hover {
+  background: var(--surface);
+}
+
+.theme-toggle svg {
+  flex: none;
+}
+
+.nav-hint {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 16px;
+}
+
+kbd {
+  font-family: inherit;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+/* Sync status with a spinner while pushing/pulling. */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-status.is-syncing::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: keeps-spin 0.9s linear infinite;
+}
+
+@keyframes keeps-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Drag-and-drop filing targets. */
+.sidebar [data-drop].is-drop,
+.label-row.is-drop {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: 0 20px 20px 0;
+}
+
+.label-row.is-drop {
+  border-radius: 8px;
+}
+
+/* Centered management panels (labels, devices, settings). */
+.panel {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.panel-head h2 {
+  margin: 4px 0 4px;
+  font-size: 20px;
+}
+
+.panel-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.label-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.label-list .label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.label-list .label-row:hover {
+  border-color: var(--border);
+}
+
+.label-list .label-row svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.label-list [data-label-filter] {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 6px 8px;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.label-list [data-label-filter]:hover {
+  background: var(--surface);
+}
+
+.label-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.label-create-row {
+  display: flex;
+  gap: 8px;
+}
+
+.label-create-input,
+.label-rename-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 7px 10px;
+  font-family: inherit;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.setting-row .panel-sub {
+  margin: 4px 0 0;
+}
+
+.setting-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* Active label filter chip above the grid; click clears it. */
+.filter-chip-row {
+  grid-column: 1 / -1;
+  display: flex;
+  margin-bottom: 2px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.label-chip svg {
+  flex: none;
+}
+
+/* Editor + composer redesign: roomier dialog, grouped sections. */
+.editor {
+  border-radius: 14px;
+  padding: 18px;
+  gap: 12px;
+}
+
+.editor-title {
+  font-size: 17px;
+}
+
+.editor-body-region {
+  margin: 2px 0;
+}
+
+.editor-reminder-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 4px 0;
+}
+
+.editor-reminder-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editor-reminder,
+.editor-repeat,
+.editor-color,
+.check-text,
+.editor-file {
+  color-scheme: light dark;
+}
+
+.editor-reminder,
+.editor-repeat,
+select.editor-color,
+input.check-text {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 7px 9px;
+}
+
+.editor-tools {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.editor-tools button,
+.editor-row button,
+.composer-row button {
+  border-radius: 8px;
+  padding: 7px 13px;
+}
+
+.composer {
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.composer-closed {
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+/* Undo/redo buttons are a mobile affordance; desktop uses Ctrl/⌘ Z. */
+@media (min-width: 768px) {
+  .editor-tools [data-action="undo"],
+  .editor-tools [data-action="redo"] {
+    display: none;
+  }
 }

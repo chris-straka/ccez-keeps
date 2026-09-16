@@ -3,6 +3,7 @@
 // as `card-action` CustomEvents { id, kind } for <keeps-app> to handle.
 import type { Note } from "../../shared/note.js";
 import { escapeHtml } from "./html.js";
+import { TAG_ICON } from "./keeps-app.js";
 import { renderBody } from "./markdown.js";
 
 export type CardActionKind =
@@ -126,7 +127,7 @@ export class NoteCard extends HTMLElement {
     const chips = (note.labelIds ?? [])
       .map(
         (id) =>
-          `<span class="label-chip" data-color="${escapeHtml(this.colors[id] ?? "default")}">${escapeHtml(this.names[id] ?? id)}</span>`,
+          `<span class="label-chip" data-color="${escapeHtml(this.colors[id] ?? "default")}">${TAG_ICON}<span>${escapeHtml(this.names[id] ?? id)}</span></span>`,
       )
       .join("");
     const repeatSuffix =

@@ -136,4 +136,32 @@ describe("checkAccess", () => {
     );
     expect(result).toEqual({ ok: true, email: "user@example.com", devBypass: false });
   });
+
+  test("accepts valid token via CF_Authorization cookie (no network)", async () => {
+    const { privateKey, jwk } = await makeKey();
+    const token = await signJwt(privateKey, { alg: "RS256", kid: "k1" }, payload());
+    const req = new Request("http://localhost/api/notes", {
+      headers: { Cookie: `other=1; CF_Authorization=${token}` },
+    });
+    const result = await checkAccess(
+      req,
+      { teamDomain: "team.example.com", aud: AUD },
+      { fetchCerts: async () => new Map([["k1", jwk]]), nowSec: NOW },
+    );
+    expect(result).toEqual({ ok: true, email: "user@example.com", devBypass: false });
+  });
+
+  test("rejects a tampered cookie token", async () => {
+    const { privateKey, jwk } = await makeKey();
+    const token = await signJwt(privateKey, { alg: "RS256", kid: "k1" }, payload());
+    const req = new Request("http://localhost/api/notes", {
+      headers: { Cookie: `CF_Authorization=${token}tampered` },
+    });
+    const result = await checkAccess(
+      req,
+      { teamDomain: "team.example.com", aud: AUD },
+      { fetchCerts: async () => new Map([["k1", jwk]]), nowSec: NOW },
+    );
+    expect(result.ok).toBe(false);
+  });
 });

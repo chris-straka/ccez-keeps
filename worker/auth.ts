@@ -1,9 +1,12 @@
 // Lane C: Cloudflare Access identity check for /api/* routes.
 //
 // Prod (agent D sets env): ACCESS_TEAM_DOMAIN + ACCESS_AUD are set, and
-// every API request must carry a valid CF-Access-JWT-Assertion, verified
-// RS256 against the team's certs. Fail-closed: 401 missing/unverifiable,
-// 403 valid signature but wrong audience.
+// every API request must carry a valid Access JWT, verified RS256 against
+// the team's certs. The token comes from the Cf-Access-JWT-Assertion
+// header Access appends — or, when a proxy/policy strips that header,
+// from the CF_Authorization session cookie, which carries the same JWT.
+// Fail-closed: 401 missing/unverifiable, 403 valid signature but wrong
+// audience.
 // Local dev: env unset -> allow with a warning (no edge in `wrangler dev`).
 
 export interface AccessEnv {
@@ -114,6 +117,19 @@ export async function fetchTeamCerts(
   return certs;
 }
 
+/** Extract the Access JWT from the CF_Authorization session cookie, if present. */
+function readAccessCookie(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === "CF_Authorization") {
+      return part.slice(eq + 1).trim();
+    }
+  }
+  return null;
+}
+
 let warnedDevBypass = false;
 
 export async function checkAccess(
@@ -133,7 +149,8 @@ export async function checkAccess(
     }
     return { ok: true, email: "local-dev", devBypass: true };
   }
-  const token = req.headers.get("Cf-Access-JWT-Assertion");
+  const headerToken = req.headers.get("Cf-Access-JWT-Assertion");
+  const token = headerToken || readAccessCookie(req.headers.get("Cookie"));
   if (!token) return { ok: false, status: 401, message: "missing Access JWT" };
   const fetchCerts = deps.fetchCerts ?? fetchTeamCerts;
   let certs: Map<string, JsonWebKey>;

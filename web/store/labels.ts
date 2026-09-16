@@ -38,9 +38,10 @@ export class LabelsStore {
   }
 
   private get fetchImpl(): typeof fetch {
-    const fn = this.deps.fetchFn ?? globalThis.fetch;
+    if (this.deps.fetchFn) return this.deps.fetchFn;
+    const fn = globalThis.fetch;
     if (!fn) throw new Error("LabelsStore: no fetch available");
-    return fn;
+    return fn.bind(globalThis);
   }
 
   /** Live (non-deleted) labels, sorted by name. */

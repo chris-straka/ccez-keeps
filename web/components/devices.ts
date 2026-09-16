@@ -24,9 +24,10 @@ export class DevicesClient {
   constructor(private readonly fetchFn?: typeof fetch) {}
 
   private get fetchImpl(): typeof fetch {
-    const fn = this.fetchFn ?? globalThis.fetch;
+    if (this.fetchFn) return this.fetchFn;
+    const fn = globalThis.fetch;
     if (!fn) throw new Error("DevicesClient: no fetch available");
-    return fn;
+    return fn.bind(globalThis);
   }
 
   private async post(path: string, body: unknown): Promise<unknown> {

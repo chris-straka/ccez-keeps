@@ -122,7 +122,7 @@ describe("keeps-app", () => {
     await t.ready;
     await t.tick();
     window.location.hash = "#/reminders";
-    window.dispatchEvent(new Event("hashchange"));
+    window.dispatchEvent(new window.Event("hashchange"));
     await t.tick();
     await t.tick();
     expect(t.cards()).toHaveLength(1);
@@ -151,7 +151,7 @@ describe("keeps-app", () => {
     await t.ready;
     const btn = t.app.querySelector(".theme-toggle")!;
     // Icon and label always agree, and a click flips the pair.
-    const before = btn.getAttribute("aria-label");
+    const before = btn.getAttribute("aria-label")!;
     expect(["Switch to light theme", "Switch to dark theme"]).toContain(before);
     expect(btn.textContent).toContain(
       before === "Switch to light theme" ? "Dark mode" : "Light mode",
@@ -201,9 +201,12 @@ describe("keeps-app", () => {
     body.value = "one two";
     body.dispatchEvent(new Event("input", { bubbles: true }));
     const editor = t.app.querySelector("note-editor")!;
-    editor.dispatchEvent(
-      new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }),
-    );
+    const key = new window.KeyboardEvent("keydown", {
+      key: "z",
+      ctrlKey: true,
+      bubbles: true,
+    });
+    editor.dispatchEvent(key as unknown as Event);
     expect(
       t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value,
     ).toBe("one");

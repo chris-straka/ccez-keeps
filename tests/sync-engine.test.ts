@@ -253,4 +253,24 @@ describe("SyncEngine", () => {
     expect((await store2.get("2"))?.id).toBe("2");
     offlineEngine.destroy();
   });
+
+  test("falls back to global fetch bound to globalThis (Chrome Illegal invocation)", async () => {
+    const seen: unknown[] = [];
+    const origFetch = globalThis.fetch;
+    async function fake(this: unknown, _url: string): Promise<Response> {
+      seen.push(this);
+      return Response.json({ notes: [], cursor: 0 });
+    }
+    globalThis.fetch = fake as typeof fetch;
+    try {
+      const store = new MemoryStore([]);
+      const engine = new SyncEngine(store, { online: () => true });
+      await engine.pull();
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toBe(globalThis);
+      engine.destroy();
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });

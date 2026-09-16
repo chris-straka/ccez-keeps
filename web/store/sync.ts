@@ -73,9 +73,10 @@ export class SyncEngine {
   }
 
   private get fetchFn(): typeof fetch {
-    const fn = this.deps.fetchFn ?? globalThis.fetch;
+    if (this.deps.fetchFn) return this.deps.fetchFn;
+    const fn = globalThis.fetch;
     if (!fn) throw new Error("SyncEngine: no fetch available");
-    return fn;
+    return fn.bind(globalThis);
   }
 
   private isOnline(): boolean {

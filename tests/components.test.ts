@@ -657,6 +657,18 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("auth status names the expired session instead of a generic error", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.setSyncStatus("auth");
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("Session expired");
+    t.app.setSyncStatus("error");
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("will retry");
+    t.app.setSyncStatus("failed");
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("next change");
+    t.cleanup();
+  });
+
   describe("theme", () => {
     function clearTheme(): void {
       window.localStorage.clear();

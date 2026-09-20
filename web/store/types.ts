@@ -27,7 +27,7 @@ export function inView(note: Note, view: NoteView): boolean {
   return view === "archive" ? note.archived : !note.archived;
 }
 
-export type SyncStatus = "idle" | "syncing" | "offline" | "error";
+export type SyncStatus = "idle" | "syncing" | "offline" | "error" | "auth" | "failed";
 
 export interface Store {
   readonly ready: Promise<void>;

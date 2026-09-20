@@ -333,7 +333,11 @@ export class KeepsApp extends HTMLElement {
           ? "Syncing…"
           : status === "offline"
             ? "Offline — changes saved locally"
-            : "Sync error — will retry";
+            : status === "auth"
+              ? "Session expired — sign in again"
+              : status === "failed"
+                ? "Sync failed — will retry on next change"
+                : "Sync error — will retry";
     const el = this.querySelector(".sync-status");
     if (el) {
       el.textContent = text;

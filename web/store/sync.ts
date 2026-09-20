@@ -4,7 +4,10 @@
 // unpushed edit survives reloads and can never hide below the cursor.
 // The drawings lane mirrors notes with its own cursor/pushMark pair and
 // endpoints; both lanes flush together. fetchFn/online are injectable;
-// tests never touch the network.
+// tests never touch the network. Failed rounds retry with exponential
+// backoff (2s base, 5min cap, jittered) and stop after 8 consecutive
+// failures; 401/403 means the Access session died, so those poll at the
+// cap instead of doubling from the base.
 import { isDrawing, type Drawing } from "../../shared/drawing.js";
 import { mergeDrawingLists } from "../../shared/drawing-sync.js";
 import { isNote, type Note } from "../../shared/note.js";
@@ -18,6 +21,39 @@ export interface SyncDeps {
   onStatus?: (status: SyncStatus) => void;
   /** Defaults to navigator.onLine when available, else true. */
   online?: () => boolean;
+  /** First retry delay in ms. Default 2000. */
+  retryBaseMs?: number;
+  /** Retry delay cap in ms. Default 300000 (5 min). */
+  retryMaxMs?: number;
+  /** Consecutive failed rounds before auto-retry stops. Default 8. */
+  retryMaxAttempts?: number;
+}
+
+/** Default first-retry delay: failures double from here up to the cap. */
+export const DEFAULT_RETRY_BASE_MS = 2_000;
+/** Default retry cap: worst case ~12 requests/hour per failing client. */
+export const DEFAULT_RETRY_MAX_MS = 300_000;
+/**
+ * Default give-up point: 8 consecutive failed rounds (~4 min of backoff:
+ * ~2+4+8+16+32+64+128s), then quiet until new information arrives. A later
+ * edit or reconnect starts a fresh series.
+ */
+export const DEFAULT_RETRY_MAX_ATTEMPTS = 8;
+
+/**
+ * Exponential backoff with jitter for sync retries: base * 2^(n-1),
+ * capped, ±20% jitter. failures counts consecutive failed rounds (>= 1).
+ */
+export function backoffDelayMs(failures: number, baseMs: number, maxMs: number): number {
+  const grown = baseMs * 2 ** (Math.max(1, Math.floor(failures)) - 1);
+  return Math.min(grown * (0.8 + Math.random() * 0.4), maxMs);
+}
+
+/** First HTTP status in an engine error, if any (e.g. "push failed: 401"). */
+function httpStatusOf(error: unknown): number | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = /\b(\d{3})\b/.exec(message);
+  return match ? Number(match[1]) : null;
 }
 
 interface PullBody {
@@ -50,6 +86,8 @@ function readCursor(value: unknown): number | null {
 export class SyncEngine {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private flight: Promise<void> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private failures = 0;
   private onlineHandler: (() => void) | undefined;
 
   constructor(
@@ -59,6 +97,8 @@ export class SyncEngine {
   ) {
     if (typeof window !== "undefined") {
       this.onlineHandler = () => {
+        // A reconnect is new information: fresh retry series.
+        this.failures = 0;
         void this.flush();
       };
       window.addEventListener("online", this.onlineHandler);
@@ -67,6 +107,10 @@ export class SyncEngine {
 
   destroy(): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
+    if (this.retryTimer !== undefined) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = undefined;
+    }
     if (typeof window !== "undefined" && this.onlineHandler) {
       window.removeEventListener("online", this.onlineHandler);
     }
@@ -97,6 +141,9 @@ export class SyncEngine {
       this.setStatus("offline");
       return;
     }
+    // New local work is new information: a stalled series gets its full
+    // attempts again instead of stopping on the first try.
+    this.failures = 0;
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = undefined;
@@ -133,6 +180,18 @@ export class SyncEngine {
     return rows.some((d) => d.updatedAt > mark);
   }
 
+  private retryMaxMs(): number {
+    return this.deps.retryMaxMs ?? DEFAULT_RETRY_MAX_MS;
+  }
+
+  private scheduleRetry(delayMs: number): void {
+    if (this.retryTimer !== undefined) clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      void this.flush();
+    }, delayMs);
+  }
+
   private async round(): Promise<void> {
     if (!this.isOnline()) {
       this.setStatus("offline");
@@ -149,10 +208,40 @@ export class SyncEngine {
         await this.pullDrawings();
         if (!(await this.needsPush())) break;
       }
+      this.failures = 0;
+      if (this.retryTimer !== undefined) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = undefined;
+      }
       this.setStatus("idle");
     } catch (error) {
       console.error("[keeps] sync round failed:", error);
-      this.setStatus(this.isOnline() ? "error" : "offline");
+      if (!this.isOnline()) {
+        this.setStatus("offline");
+        return;
+      }
+      this.failures += 1;
+      const status = httpStatusOf(error);
+      const maxAttempts = this.deps.retryMaxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
+      if (this.failures >= maxAttempts) {
+        // Out of attempts: stop quietly instead of looping forever. The
+        // rows stay dirty above the push mark, so the next edit, reconnect,
+        // or push starts a fresh series from scratch.
+        this.setStatus(status === 401 || status === 403 ? "auth" : "failed");
+        return;
+      }
+      if (status === 401 || status === 403) {
+        // Access session expired (or device token revoked): retrying fast
+        // can never succeed and only hammers the Worker. Surface it and
+        // poll slowly so a fresh sign-in converges without a reload.
+        this.setStatus("auth");
+        this.scheduleRetry(this.retryMaxMs());
+        return;
+      }
+      this.setStatus("error");
+      this.scheduleRetry(
+        backoffDelayMs(this.failures, this.deps.retryBaseMs ?? DEFAULT_RETRY_BASE_MS, this.retryMaxMs()),
+      );
     }
   }
 
@@ -269,12 +358,17 @@ export class SyncEngine {
 
   /**
    * Push the tombstone, then hard-drop the local row. Throws when offline
-   * so the note stays safely in Trash instead of vanishing unsynced.
+   * or when the push fails, so the note stays safely in Trash instead of
+   * vanishing unsynced (flush() reports failures via status, not throws).
    */
   async deleteForever(id: string): Promise<void> {
     if (!this.isOnline()) throw new Error("deleteForever: offline");
     await this.store.tombstone(id);
+    const tombstoned = await this.store.get(id);
     await this.flush();
+    if (tombstoned && (await this.store.getPushMark()) < tombstoned.updatedAt) {
+      throw new Error("deleteForever: push failed, tombstone kept locally");
+    }
     await this.store.dropLocal(id);
   }
 }

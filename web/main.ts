@@ -68,7 +68,8 @@ async function main(): Promise<void> {
   }
 
   // Instant paint from cache, then converge in the background. One slow
-  // request (cold edge, waking D1) must not condemn the session: retry once.
+  // request (cold edge, waking D1) must not condemn the session: kick one
+  // flush, and the engine backs off from there on continued failure.
   const bootPull = () =>
     sync.pull().catch((error: unknown) => {
       console.error("[keeps] boot pull failed:", error);

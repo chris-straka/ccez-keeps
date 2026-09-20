@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import type { Drawing } from "../shared/drawing.js";
 import { newNote, type Note } from "../shared/note.js";
 import { MemoryStore } from "../web/store/memory-store.js";
-import { SyncEngine } from "../web/store/sync.js";
+import { backoffDelayMs, SyncEngine } from "../web/store/sync.js";
 import type { SyncStatus } from "../web/store/types.js";
 
 const note = (overrides: Partial<Note> & { id: string }) =>
@@ -149,7 +149,7 @@ describe("SyncEngine", () => {
     engine.destroy();
   });
 
-  test("401 surfaces error status and advances nothing", async () => {
+  test("401 surfaces auth status and advances nothing", async () => {
     const statuses: SyncStatus[] = [];
     const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
     const engine = new SyncEngine(store, {
@@ -159,9 +159,181 @@ describe("SyncEngine", () => {
       onStatus: (s) => statuses.push(s),
     });
     await engine.flush();
-    expect(statuses).toContain("error");
+    expect(statuses).toContain("auth");
+    expect(statuses).not.toContain("error");
     expect(await store.getCursor()).toBe(0);
     engine.destroy();
+  });
+
+  test("backoff doubles from the base, jitters, and never exceeds the cap", () => {
+    for (let i = 0; i < 100; i += 1) {
+      const first = backoffDelayMs(1, 2000, 300_000);
+      expect(first).toBeGreaterThanOrEqual(1600);
+      expect(first).toBeLessThanOrEqual(2400);
+      const third = backoffDelayMs(3, 2000, 300_000);
+      expect(third).toBeGreaterThanOrEqual(6400);
+      expect(third).toBeLessThanOrEqual(9600);
+      expect(backoffDelayMs(30, 2000, 300_000)).toBe(300_000);
+    }
+  });
+
+  test("a failed round retries with backoff and converges", async () => {
+    const server = makeServer();
+    let failuresLeft = 1;
+    const statuses: SyncStatus[] = [];
+    const flaky = (async (url: string, init?: RequestInit) => {
+      if (failuresLeft > 0) {
+        failuresLeft -= 1;
+        return new Response("boom", { status: 500 });
+      }
+      return server.fetchFn(url, init);
+    }) as unknown as typeof fetch;
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: flaky,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 40,
+      onStatus: (s) => statuses.push(s),
+    });
+    await engine.flush();
+    expect(statuses).toContain("error");
+    const deadline = Date.now() + 2000;
+    while ((await store.getCursor()) === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(await store.getCursor()).toBe(1);
+    while (statuses[statuses.length - 1] !== "idle" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(statuses[statuses.length - 1]).toBe("idle");
+    engine.destroy();
+  });
+
+  test("401 polls at the cap instead of hot-retrying", async () => {
+    let calls = 0;
+    const statuses: SyncStatus[] = [];
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () => {
+        calls += 1;
+        return new Response("denied", { status: 401 });
+      }) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 10_000,
+      onStatus: (s) => statuses.push(s),
+    });
+    await engine.flush();
+    expect(statuses).toContain("auth");
+    await new Promise((r) => setTimeout(r, 80));
+    expect(calls).toBe(1);
+    engine.destroy();
+  });
+
+  test("retries stop after max attempts instead of looping forever", async () => {
+    let calls = 0;
+    const statuses: SyncStatus[] = [];
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () => {
+        calls += 1;
+        return new Response("boom", { status: 500 });
+      }) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 30,
+      retryMaxAttempts: 3,
+      onStatus: (s) => statuses.push(s),
+    });
+    await engine.flush();
+    const deadline = Date.now() + 2000;
+    while (calls < 3 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(calls).toBe(3);
+    expect(statuses).toContain("error");
+    expect(statuses[statuses.length - 1]).toBe("failed");
+    await new Promise((r) => setTimeout(r, 150));
+    expect(calls).toBe(3);
+    engine.destroy();
+  });
+
+  test("a later edit starts a fresh retry series after give-up", async () => {
+    let calls = 0;
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () => {
+        calls += 1;
+        return new Response("boom", { status: 500 });
+      }) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 30,
+      retryMaxAttempts: 2,
+      debounceMs: 5,
+    });
+    await engine.flush();
+    const deadline = Date.now() + 2000;
+    while (calls < 2 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(calls).toBe(2);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toBe(2);
+    engine.schedulePush();
+    while (calls < 4 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    // One immediate attempt for the new work plus its bounded retries.
+    expect(calls).toBeGreaterThanOrEqual(3);
+    engine.destroy();
+  });
+
+  test("auth slow-poll stops after max attempts too", async () => {
+    let calls = 0;
+    const statuses: SyncStatus[] = [];
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () => {
+        calls += 1;
+        return new Response("denied", { status: 401 });
+      }) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 20,
+      retryMaxAttempts: 2,
+      onStatus: (s) => statuses.push(s),
+    });
+    await engine.flush();
+    const deadline = Date.now() + 2000;
+    while (calls < 2 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(calls).toBe(2);
+    expect(statuses[statuses.length - 1]).toBe("auth");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toBe(2);
+    engine.destroy();
+  });
+
+  test("destroy cancels a scheduled retry", async () => {
+    let calls = 0;
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () => {
+        calls += 1;
+        return new Response("boom", { status: 500 });
+      }) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 40,
+    });
+    await engine.flush();
+    expect(calls).toBe(1);
+    engine.destroy();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toBe(1);
   });
 
   test("schedulePush debounces to a single push", async () => {
@@ -252,6 +424,20 @@ describe("SyncEngine", () => {
     await expect(offlineEngine.deleteForever("2")).rejects.toThrow("offline");
     expect((await store2.get("2"))?.id).toBe("2");
     offlineEngine.destroy();
+  });
+
+  test("deleteForever keeps the tombstone when the push fails", async () => {
+    const store = new MemoryStore([note({ id: "1", updatedAt: 100 })]);
+    const engine = new SyncEngine(store, {
+      fetchFn: (async () =>
+        new Response("boom", { status: 500 })) as unknown as typeof fetch,
+      online: () => true,
+      retryBaseMs: 10,
+      retryMaxMs: 40,
+    });
+    await expect(engine.deleteForever("1")).rejects.toThrow("push failed");
+    expect((await store.get("1"))?.deleted).toBe(true);
+    engine.destroy();
   });
 
   test("falls back to global fetch bound to globalThis (Chrome Illegal invocation)", async () => {

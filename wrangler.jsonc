@@ -13,6 +13,16 @@
   "triggers": {
     "crons": ["0 3 * * *"]
   },
+  // Workers Logs (invocation logs included): every request — including
+  // failed auth — lands in Observability for 7 days. Personal-app traffic
+  // is tiny, so sample everything.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": true
+    }
+  },
   "vars": {
     "ACCESS_TEAM_DOMAIN": "silent-bread-ade3.cloudflareaccess.com",
     "ACCESS_AUD": "3aefdec94d583539abc286684f4ad61cad99a53e71d7e6a7c84b273cd2840e26"

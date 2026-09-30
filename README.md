@@ -12,7 +12,7 @@ Single user, no collaboration.
 | Local store | IndexedDB via `idb` (`web/store/idb-store.ts`) |
 | Sync | Debounced push/pull in `web/store/sync.ts`, LWW on `updatedAt` |
 | API | Hono on a single Worker (`worker/`), Drizzle + D1 |
-| Toolchain | Bun (`bun install`, `bun run build`, `bun test`, `bunx tsc --noEmit`) |
+| Toolchain | Bun (`bun install`, `bun run build`, `bun run test`, `bunx tsc --noEmit`) |
 | Deploy | `wrangler deploy` (Worker + static assets, one unit) |
 | Auth | Cloudflare Access Allow (exact email), plus Worker JWT check |
 
@@ -44,7 +44,7 @@ Single user, no collaboration.
 ```sh
 bun install
 bun run build        # -> dist/
-bun test
+bun run test         # --isolate: each file gets fresh globals (see package.json)
 wrangler d1 migrations apply DB --local
 wrangler dev --local --port 8787
 ```

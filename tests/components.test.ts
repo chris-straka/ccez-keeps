@@ -669,6 +669,51 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("auth status offers re-login; the button sheds the cached shell", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.setSyncStatus("auth");
+    const btn = t.app.querySelector<HTMLButtonElement>(".sync-status [data-reauth]");
+    expect(btn?.textContent).toBe("Sign in again");
+    const view = t.app.ownerDocument.defaultView as unknown as {
+      navigator: Record<string, unknown>;
+      location: { reload: () => void };
+    } & Record<string, unknown>;
+    let unregistered = 0;
+    const deleted: string[] = [];
+    let reloaded = false;
+    view.navigator["serviceWorker"] = {
+      getRegistrations: async () => [{ unregister: async () => { unregistered += 1; } }],
+    };
+    view["caches"] = {
+      keys: async () => ["ccez-keeps-old"],
+      delete: async (name: string) => { deleted.push(name); },
+    };
+    view.location.reload = () => { reloaded = true; };
+    btn!.click();
+    await t.tick();
+    expect(unregistered).toBe(1);
+    expect(deleted).toEqual(["ccez-keeps-old"]);
+    expect(reloaded).toBe(true);
+    t.cleanup();
+  });
+
+  test("sync status survives re-renders; only auth offers re-login", async () => {
+    const t = mount([note({ id: "1", title: "t" })]);
+    await t.ready;
+    t.app.setSyncStatus("auth");
+    await t.store.put(note({ id: "2", title: "n2" }));
+    await t.tick();
+    expect(t.app.querySelector(".sync-status [data-reauth]")).not.toBeNull();
+    t.app.setSyncStatus("error");
+    expect(t.app.querySelector(".sync-status [data-reauth]")).toBeNull();
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("will retry");
+    await t.store.put(note({ id: "3", title: "n3" }));
+    await t.tick();
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("will retry");
+    t.cleanup();
+  });
+
   describe("theme", () => {
     function clearTheme(): void {
       window.localStorage.clear();

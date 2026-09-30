@@ -158,17 +158,24 @@ export async function checkAccess(
   }
   const headerToken = req.headers.get("Cf-Access-JWT-Assertion");
   const token = headerToken || readAccessCookie(req.headers.get("Cookie"));
-  if (!token) return { ok: false, status: 401, message: "missing Access JWT" };
+  if (!token) {
+    console.warn("[keeps] access denied: missing Access JWT");
+    return { ok: false, status: 401, message: "missing Access JWT" };
+  }
   const fetchCerts = deps.fetchCerts ?? fetchTeamCerts;
   let certs: Map<string, JsonWebKey>;
   try {
     certs = await fetchCerts(env.teamDomain);
   } catch {
+    console.warn("[keeps] access denied: cannot load Access certs");
     return { ok: false, status: 401, message: "cannot load Access certs" };
   }
   const nowSec = deps.nowSec ?? Math.floor(Date.now() / 1000);
   const result = await verifyAccessJwt(token, { certs, aud: env.aud, nowSec });
   if (!result.ok) {
+    // The message is a fixed reason string (never token material), safe
+    // for Workers Logs — and the fastest way to debug the next 401.
+    console.warn(`[keeps] access denied: ${result.message}`);
     const status = result.message === "wrong audience" ? 403 : 401;
     return { ok: false, status, message: result.message };
   }

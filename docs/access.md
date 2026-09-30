@@ -37,5 +37,7 @@ Zero Trust → Access → Applications → app → Additional settings into
 
 Open the failing request → Response tab shows the exact cause
 (`missing Access JWT`, `cannot load Access certs`, `expired`,
-`wrong audience`, …). Device tokens (`Authorization: Bearer`) bypass this
-gate; see the enroll flow in `worker/devices.ts`.
+`wrong audience`, …). The same reason is logged server-side as
+`[keeps] access denied: <reason>` in Workers Logs, so past incidents are
+debuggable without the browser. Device tokens (`Authorization: Bearer`)
+bypass this gate; see the enroll flow in `worker/devices.ts`.

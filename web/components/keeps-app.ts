@@ -111,6 +111,8 @@ export class KeepsApp extends HTMLElement {
   private activeLabelId: string | null = null;
   private editingLabelId: string | null = null;
   private labelsUnsub: (() => void) | undefined;
+  /** Last sync banner, re-applied after every renderShell() (it rebuilds innerHTML). */
+  private lastSyncStatus: SyncStatus = "idle";
 
   async connect(
     store: Store & DrawingStore,
@@ -326,22 +328,51 @@ export class KeepsApp extends HTMLElement {
   }
 
   setSyncStatus(status: SyncStatus): void {
-    const text =
-      status === "idle"
-        ? ""
-        : status === "syncing"
-          ? "Syncing…"
-          : status === "offline"
-            ? "Offline — changes saved locally"
-            : status === "auth"
-              ? "Session expired — sign in again"
-              : status === "failed"
-                ? "Sync failed — will retry on next change"
-                : "Sync error — will retry";
+    this.lastSyncStatus = status;
+    this.renderSyncStatus();
+  }
+
+  private renderSyncStatus(): void {
+    // Panel views (devices/labels/settings) have no banner element.
     const el = this.querySelector(".sync-status");
-    if (el) {
-      el.textContent = text;
-      el.classList.toggle("is-syncing", status === "syncing");
+    if (!el) return;
+    el.classList.toggle("is-syncing", this.lastSyncStatus === "syncing");
+    if (this.lastSyncStatus === "auth") {
+      // A dead Access session never heals by retrying: offer the way out.
+      el.innerHTML = `Session expired — <button data-reauth>Sign in again</button>`;
+      return;
+    }
+    el.textContent =
+      this.lastSyncStatus === "idle"
+        ? ""
+        : this.lastSyncStatus === "syncing"
+          ? "Syncing…"
+          : this.lastSyncStatus === "offline"
+            ? "Offline — changes saved locally"
+            : this.lastSyncStatus === "failed"
+              ? "Sync failed — will retry on next change"
+              : "Sync error — will retry";
+  }
+
+  /**
+   * Shed the cached shell and its worker, then reload into the network so
+   * Access re-issues the session cookie and sync converges. Every step is
+   * best-effort — the reload is what matters.
+   */
+  private async reauthenticate(): Promise<void> {
+    const view = this.ownerDocument.defaultView;
+    try {
+      const regs = (await view?.navigator.serviceWorker?.getRegistrations()) ?? [];
+      await Promise.all(regs.map((reg) => reg.unregister()));
+      const names = (await view?.caches?.keys()) ?? [];
+      await Promise.all(names.map((name) => view?.caches?.delete(name)));
+    } catch {
+      // Cleanup failed; the reload below still forces a fresh login.
+    }
+    try {
+      view?.location.reload();
+    } catch {
+      // Non-navigating environments (tests) have no reload.
     }
   }
 
@@ -591,6 +622,7 @@ export class KeepsApp extends HTMLElement {
       <note-editor></note-editor>
       <drawing-dialog></drawing-dialog>`;
     this.applyTheme();
+    this.renderSyncStatus();
   }
 
   private isBucketView(): boolean {
@@ -947,6 +979,10 @@ export class KeepsApp extends HTMLElement {
     const target = event.target as HTMLElement;
     if (target.closest("[data-theme-toggle]")) {
       this.toggleTheme();
+      return;
+    }
+    if (target.closest("[data-reauth]")) {
+      void this.reauthenticate();
       return;
     }
     const navBtn = target.closest("[data-nav]");

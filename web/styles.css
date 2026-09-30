@@ -248,6 +248,10 @@ button:hover {
   min-height: 18px;
 }
 
+.sync-status [data-reauth] {
+  margin-left: 8px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

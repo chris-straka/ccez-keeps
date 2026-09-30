@@ -1,6 +1,6 @@
 // Lane C regression suite: Access JWT verification (worker/auth.ts).
 // Keypair is generated in-test; no network, no fixtures.
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   base64UrlEncode,
   checkAccess,
@@ -131,6 +131,18 @@ describe("verifyAccessJwt", () => {
 });
 
 describe("checkAccess", () => {
+  const warned: string[] = [];
+  const realWarn = console.warn;
+  beforeEach(() => {
+    warned.length = 0;
+    console.warn = (...args: unknown[]) => {
+      warned.push(args.map(String).join(" "));
+    };
+  });
+  afterEach(() => {
+    console.warn = realWarn;
+  });
+
   test("dev bypass when env unset", async () => {
     const result = await checkAccess(new Request("http://localhost/api/notes"), {});
     expect(result.ok).toBe(true);
@@ -184,5 +196,44 @@ describe("checkAccess", () => {
       { fetchCerts: async () => new Map([["k1", jwk]]), nowSec: NOW },
     );
     expect(result.ok).toBe(false);
+  });
+
+  test("denials name the reason for Workers Logs (no token material)", async () => {
+    const result = await checkAccess(new Request("http://localhost/api/notes"), {
+      teamDomain: "team.example.com",
+      aud: AUD,
+    });
+    expect(result.ok).toBe(false);
+    expect(warned).toEqual(["[keeps] access denied: missing Access JWT"]);
+  });
+
+  test("expired tokens log their reason; valid tokens stay silent", async () => {
+    const { privateKey, jwk } = await makeKey();
+    const certs = () => Promise.resolve(new Map([["k1", jwk]]));
+    const expired = await signJwt(
+      privateKey,
+      { alg: "RS256", kid: "k1" },
+      payload({ exp: NOW - 1 }),
+    );
+    const bad = await checkAccess(
+      new Request("http://localhost/api/notes", {
+        headers: { "Cf-Access-JWT-Assertion": expired },
+      }),
+      { teamDomain: "team.example.com", aud: AUD },
+      { fetchCerts: certs, nowSec: NOW },
+    );
+    expect(bad.ok).toBe(false);
+    expect(warned).toEqual(["[keeps] access denied: expired"]);
+    warned.length = 0;
+    const good = await signJwt(privateKey, { alg: "RS256", kid: "k1" }, payload());
+    const okResult = await checkAccess(
+      new Request("http://localhost/api/notes", {
+        headers: { "Cf-Access-JWT-Assertion": good },
+      }),
+      { teamDomain: "team.example.com", aud: AUD },
+      { fetchCerts: certs, nowSec: NOW },
+    );
+    expect(okResult.ok).toBe(true);
+    expect(warned).toEqual([]);
   });
 });

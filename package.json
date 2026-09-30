@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "build": "bun run build.ts",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "typecheck": "bunx tsc --noEmit",
     "db:generate": "bunx drizzle-kit generate",
     "dev:worker": "bunx wrangler dev"

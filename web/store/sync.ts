@@ -13,7 +13,7 @@ import { mergeDrawingLists } from "../../shared/drawing-sync.js";
 import { isNote, type Note } from "../../shared/note.js";
 import { mergeNoteLists } from "../../shared/sync.js";
 import type { DrawingStore } from "./drawings.js";
-import type { Store, SyncStatus } from "./types.js";
+import type { FlushOptions, Store, SyncStatus } from "./types.js";
 
 export interface SyncDeps {
   fetchFn?: typeof fetch;
@@ -89,6 +89,8 @@ export class SyncEngine {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private failures = 0;
   private onlineHandler: (() => void) | undefined;
+  private hideHandler: (() => void) | undefined;
+  private pageHideHandler: (() => void) | undefined;
 
   constructor(
     private readonly store: Store,
@@ -103,6 +105,23 @@ export class SyncEngine {
       };
       window.addEventListener("online", this.onlineHandler);
     }
+    if (typeof document !== "undefined") {
+      // Tab hidden (switch, minimize, close): push now — the page may be
+      // gone before the debounced flush runs.
+      this.hideHandler = () => {
+        if (document.visibilityState === "hidden") void this.flush({ keepalive: true });
+      };
+      document.addEventListener("visibilitychange", this.hideHandler);
+    }
+    if (typeof window !== "undefined") {
+      // visibilitychange misses some unload paths (mobile Safari close);
+      // pagehide covers them. flush() shares one flight, so double events
+      // never double-push.
+      this.pageHideHandler = () => {
+        void this.flush({ keepalive: true });
+      };
+      window.addEventListener("pagehide", this.pageHideHandler);
+    }
   }
 
   destroy(): void {
@@ -113,6 +132,12 @@ export class SyncEngine {
     }
     if (typeof window !== "undefined" && this.onlineHandler) {
       window.removeEventListener("online", this.onlineHandler);
+    }
+    if (typeof document !== "undefined" && this.hideHandler) {
+      document.removeEventListener("visibilitychange", this.hideHandler);
+    }
+    if (typeof window !== "undefined" && this.pageHideHandler) {
+      window.removeEventListener("pagehide", this.pageHideHandler);
     }
   }
 
@@ -151,14 +176,17 @@ export class SyncEngine {
     }, this.deps.debounceMs ?? 300);
   }
 
-  /** Immediate push-then-pull. Concurrent callers share one flight. */
-  flush(): Promise<void> {
+  /**
+   * Immediate push-then-pull. Concurrent callers share one flight (the
+   * first caller's options win).
+   */
+  flush(opts: FlushOptions = {}): Promise<void> {
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
     if (!this.flight) {
-      this.flight = this.round().finally(() => {
+      this.flight = this.round(opts).finally(() => {
         this.flight = undefined;
       });
     }
@@ -192,7 +220,7 @@ export class SyncEngine {
     }, delayMs);
   }
 
-  private async round(): Promise<void> {
+  private async round(opts: FlushOptions = {}): Promise<void> {
     if (!this.isOnline()) {
       this.setStatus("offline");
       return;
@@ -202,10 +230,10 @@ export class SyncEngine {
       // Loop until quiescent: an edit landing mid-flight schedules work
       // that the in-flight round would otherwise strand below the marks.
       for (let i = 0; i < 5; i += 1) {
-        await this.push();
-        await this.pull();
-        await this.pushDrawings();
-        await this.pullDrawings();
+        await this.push(opts);
+        await this.pull(opts);
+        await this.pushDrawings(opts);
+        await this.pullDrawings(opts);
         if (!(await this.needsPush())) break;
       }
       this.failures = 0;
@@ -245,7 +273,7 @@ export class SyncEngine {
     }
   }
 
-  private async push(): Promise<void> {
+  private async push(opts: FlushOptions = {}): Promise<void> {
     const mark = await this.store.getPushMark();
     const rows = await this.store.all();
     const dirty = rows.filter((n) => n.updatedAt > mark);
@@ -259,6 +287,7 @@ export class SyncEngine {
         tombstones: dirty.filter((n) => n.deleted),
         since,
       }),
+      keepalive: opts.keepalive ?? false,
     });
     if (!res.ok) throw new Error(`push failed: ${res.status}`);
     const body = (await res.json()) as Partial<PushBody>;
@@ -275,9 +304,11 @@ export class SyncEngine {
     await this.store.setPushMark(maxDirty);
   }
 
-  async pull(): Promise<void> {
+  async pull(opts: FlushOptions = {}): Promise<void> {
     const cursor = await this.store.getCursor();
-    const res = await this.fetchFn(`/api/notes?since=${cursor}`);
+    const res = await this.fetchFn(`/api/notes?since=${cursor}`, {
+      keepalive: opts.keepalive ?? false,
+    });
     if (!res.ok) throw new Error(`pull failed: ${res.status}`);
     const body = (await res.json()) as Partial<PullBody>;
     const next = readCursor(body.cursor);
@@ -288,7 +319,7 @@ export class SyncEngine {
     await this.store.setCursor(next);
   }
 
-  private async pushDrawings(): Promise<void> {
+  private async pushDrawings(opts: FlushOptions = {}): Promise<void> {
     if (!this.drawings) return;
     const mark = await this.drawings.getDrawingsPushMark();
     const dirty = (await this.drawings.allDrawings()).filter((d) => d.updatedAt > mark);
@@ -302,6 +333,7 @@ export class SyncEngine {
         tombstones: dirty.filter((d) => d.deleted),
         since,
       }),
+      keepalive: opts.keepalive ?? false,
     });
     if (!res.ok) throw new Error(`drawings push failed: ${res.status}`);
     const body = (await res.json()) as Partial<DrawPushBody>;
@@ -315,10 +347,12 @@ export class SyncEngine {
     await this.drawings.setDrawingsPushMark(maxDirty);
   }
 
-  private async pullDrawings(): Promise<void> {
+  private async pullDrawings(opts: FlushOptions = {}): Promise<void> {
     if (!this.drawings) return;
     const cursor = await this.drawings.getDrawingsCursor();
-    const res = await this.fetchFn(`/api/drawings?since=${cursor}`);
+    const res = await this.fetchFn(`/api/drawings?since=${cursor}`, {
+      keepalive: opts.keepalive ?? false,
+    });
     if (!res.ok) throw new Error(`drawings pull failed: ${res.status}`);
     const body = (await res.json()) as Partial<DrawPullBody>;
     const next = readCursor(body.cursor);

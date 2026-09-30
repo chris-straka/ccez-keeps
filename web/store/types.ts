@@ -29,6 +29,16 @@ export function inView(note: Note, view: NoteView): boolean {
 
 export type SyncStatus = "idle" | "syncing" | "offline" | "error" | "auth" | "failed";
 
+export interface FlushOptions {
+  /**
+   * Fire-and-forget for tab hide/close: the request outlives the page.
+   * Cursor/marks still advance only on success, so a killed request
+   * simply retries on the next visit — never lost (writes persist
+   * locally first), never duplicated (pushes are idempotent LWW upserts).
+   */
+  keepalive?: boolean;
+}
+
 export interface Store {
   readonly ready: Promise<void>;
   /** All rows including tombstones (sync + views build on this). */
@@ -54,6 +64,8 @@ export interface Store {
   /** Max updatedAt successfully pushed (survives reloads; see SyncEngine). */
   getPushMark(): Promise<number>;
   setPushMark(value: number): Promise<void>;
+  /** Order placing a note above all current rows (new notes land on top). */
+  topOrder(): Promise<number>;
   exportJson(): Promise<string>;
   importJson(json: string): Promise<{ imported: number }>;
   subscribe(fn: () => void): () => void;

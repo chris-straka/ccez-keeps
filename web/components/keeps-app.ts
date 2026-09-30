@@ -1107,25 +1107,61 @@ export class KeepsApp extends HTMLElement {
 
   private onDragOver(event: Event): void {
     const e = event as DragEvent;
+    if (!e.dataTransfer) return;
     const t = this.dropTarget(e.target as HTMLElement);
-    if (!t || !e.dataTransfer) return;
+    if (t) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      t.classList.add("is-drop");
+      return;
+    }
+    const card = this.reorderTarget(e);
+    if (!card) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    t.classList.add("is-drop");
+    card.classList.add("is-drop", this.dropAfter(card, e) ? "drop-after" : "drop-before");
   }
 
   private onDragLeave(event: Event): void {
-    const t = this.dropTarget(event.target as HTMLElement);
+    const e = event as DragEvent;
     // Only clear when truly leaving the target (children bubble dragleave).
-    const to = (event as DragEvent).relatedTarget as Node | null;
-    if (t && (!to || !t.contains(to))) t.classList.remove("is-drop");
+    const to = e.relatedTarget as Node | null;
+    const clear = (t: HTMLElement | null) => {
+      if (t && (!to || !t.contains(to))) {
+        t.classList.remove("is-drop", "drop-before", "drop-after");
+      }
+    };
+    clear(this.dropTarget(e.target as HTMLElement));
+    clear(this.reorderTarget(e));
+  }
+
+  /** Card under the pointer during a note drag, if reordering applies. */
+  private reorderTarget(e: DragEvent): HTMLElement | null {
+    // Reminders sort by fire time; manual order only applies where
+    // compareNotes does (notes/archive/trash, label-filtered included).
+    if (this.view === "reminders") return null;
+    const el = e.target as HTMLElement | null;
+    return el?.closest?.("note-card") as HTMLElement | null;
+  }
+
+  /** Insertion side from the pointer: x-midpoint in grid, y-midpoint in list. */
+  private dropAfter(card: HTMLElement, e: DragEvent): boolean {
+    const rect = card.getBoundingClientRect();
+    return this.listMode
+      ? e.clientY > rect.top + rect.height / 2
+      : e.clientX > rect.left + rect.width / 2;
   }
 
   private async onDrop(event: DragEvent): Promise<void> {
     const t = this.dropTarget(event.target as HTMLElement);
     const id = event.dataTransfer?.getData("text/plain");
-    this.querySelectorAll(".is-drop").forEach((el) => el.classList.remove("is-drop"));
-    if (!t || !id) return;
+    this.querySelectorAll(".is-drop").forEach((el) =>
+      el.classList.remove("is-drop", "drop-before", "drop-after"),
+    );
+    if (!t || !id) {
+      await this.dropReorder(event, id);
+      return;
+    }
     event.preventDefault();
     const store = this.requireStore();
     const note = await store.get(id);
@@ -1149,6 +1185,47 @@ export class KeepsApp extends HTMLElement {
     } else {
       return;
     }
+    this.sync?.schedulePush();
+    await this.refresh();
+  }
+
+  /** Drop onto another card: slot the dragged note before/after it. */
+  private async dropReorder(event: DragEvent, id: string | undefined): Promise<void> {
+    if (!id) return;
+    const card = this.reorderTarget(event);
+    const targetId = card?.dataset["noteId"];
+    if (!card || !targetId || targetId === id) return;
+    event.preventDefault();
+    const store = this.requireStore();
+    const note = await store.get(id);
+    if (!note || note.deleted) return;
+    // Rendered DOM order is what the user sees: splice there, then
+    // fractionate between the new neighbors (missing orders count as 0,
+    // matching compareNotes; filtered views may share a slot with a
+    // hidden neighbor and settle on the next drop).
+    const ids = [...this.querySelectorAll("note-card")]
+      .map((el) => (el as HTMLElement).dataset["noteId"] ?? "")
+      .filter((v) => v.length > 0 && v !== id);
+    const at = ids.indexOf(targetId);
+    if (at === -1) return;
+    ids.splice(this.dropAfter(card, event) ? at + 1 : at, 0, id);
+    const pos = ids.indexOf(id);
+    const prevId = pos > 0 ? ids[pos - 1] : undefined;
+    const nextId = pos < ids.length - 1 ? ids[pos + 1] : undefined;
+    const prev = prevId ? await store.get(prevId) : undefined;
+    const next = nextId ? await store.get(nextId) : undefined;
+    const prevOrder = prev?.order ?? 0;
+    const nextOrder = next?.order ?? 0;
+    const order =
+      prev && next
+        ? (prevOrder + nextOrder) / 2
+        : prev
+          ? prevOrder + 1
+          : next
+            ? nextOrder - 1
+            : (note.order ?? 0);
+    await store.put({ ...note, order, updatedAt: Date.now() });
+    buzz("confirm");
     this.sync?.schedulePush();
     await this.refresh();
   }
@@ -1177,8 +1254,9 @@ export class KeepsApp extends HTMLElement {
       await this.refresh();
       return;
     }
-    await this.requireStore().put(
-      newNote({ id: crypto.randomUUID(), title, body }),
+    const store = this.requireStore();
+    await store.put(
+      newNote({ id: crypto.randomUUID(), title, body, order: await store.topOrder() }),
     );
     this.composerOpen = false;
     buzz("confirm");
@@ -1264,7 +1342,9 @@ export class KeepsApp extends HTMLElement {
       await store.put({ ...existing, ...draft, ...extras, updatedAt: Date.now() });
     } else {
       if (!hasContent) return;
-      await store.put(newNote({ id: crypto.randomUUID(), ...draft, ...extras }));
+      await store.put(
+        newNote({ id: crypto.randomUUID(), ...draft, ...extras, order: await store.topOrder() }),
+      );
     }
     buzz("confirm");
     this.sync?.schedulePush();

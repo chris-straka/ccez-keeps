@@ -9,7 +9,6 @@ import "./components/drawing-dialog.js";
 import { IdbStore } from "./store/idb-store.js";
 import { LabelsStore } from "./store/labels.js";
 import { SyncEngine } from "./store/sync.js";
-import { bootFailureText } from "./sync-status.js";
 
 function renderBootError(message: string): void {
   const root = document.getElementById("app");
@@ -39,10 +38,11 @@ async function main(): Promise<void> {
   );
   const labels = new LabelsStore();
   await app.connect(store, sync, undefined, labels);
-  // Labels converge in the background like notes; failures stay silent
-  // (the sidebar renders from cache and every label write retries).
-  void labels.pull().catch((error: unknown) => {
-    console.error("[keeps] labels boot pull failed:", error);
+  // Labels converge in the background like notes (flush: re-push anything
+  // persisted-but-unsent, then pull); failures stay silent (the sidebar
+  // renders from cache and every label write retries).
+  void labels.flush().catch((error: unknown) => {
+    console.error("[keeps] labels boot sync failed:", error);
   });
 
   document.addEventListener("keydown", (event) => {
@@ -67,26 +67,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Instant paint from cache, then converge in the background. One slow
-  // request (cold edge, waking D1) must not condemn the session: kick one
-  // flush, and the engine backs off from there on continued failure.
-  const bootPull = () =>
-    sync.pull().catch((error: unknown) => {
-      console.error("[keeps] boot pull failed:", error);
-      app.querySelector(".sync-status")!.textContent = bootFailureText(
-        error,
-        navigator.onLine,
-      );
-    });
-  void bootPull().then(() => {
-    if (app.querySelector(".sync-status")?.textContent !== "") {
-      setTimeout(() => {
-        void sync.flush().catch((error: unknown) => {
-          console.error("[keeps] boot retry failed:", error);
-        });
-      }, 3000);
-    }
-  });
+  // Instant paint from cache, then converge in the background: one flush
+  // pushes dirty rows (edits made while signed out) and pulls deltas. The
+  // engine reports via onStatus and backs off from there on failure, so one
+  // slow request (cold edge, waking D1) never condemns the session.
+  void sync.flush();
 }
 
 main().catch((error: unknown) => {

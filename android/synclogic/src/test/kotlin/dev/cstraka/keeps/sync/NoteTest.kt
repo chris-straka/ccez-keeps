@@ -66,6 +66,13 @@ class NoteTest {
     }
 
     @Test
+    fun orderDefaultsToZeroAcceptsFractionalRejectsNonFinite() {
+        assertEquals(0.0, newNote(id = "a").order)
+        assertTrue(isNote(newNote(id = "x", order = -1.5)))
+        assertFalse(isNote(newNote(id = "x").copy(order = Double.NaN)))
+    }
+
+    @Test
     fun exportRoundTripKeepsNewFields() {
         val note = newNote(
             id = "r",

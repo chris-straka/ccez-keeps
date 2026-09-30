@@ -76,6 +76,16 @@ function parseChecklist(raw: unknown, id: string): ChecklistItem[] | null {
   return parsed;
 }
 
+function parseSortOrder(raw: unknown, id: string): number {
+  // Tolerant of pre-migration rows (missing column) and NULL: legacy
+  // cluster, same as a missing Note.order on the client.
+  if (raw === undefined || raw === null) return 0;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error(`rowToNote: corrupt row ${id}`);
+  }
+  return raw;
+}
+
 function parseAttachments(raw: unknown, id: string): Attachment[] {
   // Tolerant of pre-migration rows (missing column): no attachments.
   if (raw === undefined || raw === null) return [];
@@ -106,6 +116,7 @@ export function rowToNote(row: NoteRow): Note {
     repeat: parseRepeat(row.repeat, row.id),
     checklist: parseChecklist(row.checklist, row.id),
     attachments: parseAttachments(row.attachments, row.id),
+    order: parseSortOrder(row.order, row.id),
   };
   if (!isNote(note)) throw new Error(`rowToNote: corrupt row ${row.id}`);
   return note;
@@ -126,6 +137,7 @@ export function noteToRow(note: Note, seq: number): NoteRow {
     repeat: note.repeat,
     checklist: note.checklist === null ? null : JSON.stringify(note.checklist),
     attachments: JSON.stringify(note.attachments ?? []),
+    order: note.order ?? 0,
     seq,
   };
 }

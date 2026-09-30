@@ -6,9 +6,25 @@ import {
   mergeLabelLists,
   type Label,
 } from "../../shared/label.js";
+import type { FlushOptions } from "./types.js";
 
 export interface LabelsDeps {
   fetchFn?: typeof fetch;
+}
+
+const STORAGE_KEY = "keeps-labels";
+
+function loadPersisted(): Map<string, Label> {
+  try {
+    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+    if (!raw) return new Map();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Map();
+    const valid = parsed.filter(isLabel);
+    return new Map(valid.map((l) => [l.id, l]));
+  } catch {
+    return new Map();
+  }
 }
 
 function newId(): string {
@@ -24,7 +40,32 @@ export class LabelsStore {
   private cursor = 0;
   private listeners = new Set<() => void>();
 
-  constructor(private readonly deps: LabelsDeps = {}) {}
+  constructor(private readonly deps: LabelsDeps = {}) {
+    // Rows lived in memory only: a tab closed before the fire-and-forget
+    // push landed lost the write. Persist every mutation so a reload
+    // re-pushes it (push sends all rows, idempotent).
+    this.rows = loadPersisted();
+    // Page-lifetime listeners (never removed): push on hide/close so a
+    // label edit made seconds before leaving still uploads.
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") void this.flush({ keepalive: true }).catch(() => {});
+      });
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", () => {
+        void this.flush({ keepalive: true }).catch(() => {});
+      });
+    }
+  }
+
+  private persist(): void {
+    try {
+      globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify([...this.rows.values()]));
+    } catch {
+      // Storage is a nicety; the server remains the source of truth.
+    }
+  }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -56,10 +97,11 @@ export class LabelsStore {
     return label && !label.deleted ? label : undefined;
   }
 
-  /** Local-only write (seeding/tests). Validates via isLabel. */
+  /** Local write (seeding/tests/immediate UI). Validates via isLabel. */
   put(label: Label): void {
     if (!isLabel(label)) throw new Error("LabelsStore.put: not a Label");
     this.rows.set(label.id, label);
+    this.persist();
     this.notify();
   }
 
@@ -74,6 +116,7 @@ export class LabelsStore {
       deleted: false,
     };
     this.rows.set(label.id, label);
+    this.persist();
     this.notify();
     void this.flush().catch(() => {});
     return label;
@@ -85,6 +128,7 @@ export class LabelsStore {
     const current = this.rows.get(id);
     if (!current || current.deleted) return;
     this.rows.set(id, { ...current, name: trimmed, updatedAt: Date.now() });
+    this.persist();
     this.notify();
     void this.flush().catch(() => {});
   }
@@ -93,17 +137,18 @@ export class LabelsStore {
     const current = this.rows.get(id);
     if (!current || current.deleted) return;
     this.rows.set(id, { ...current, deleted: true, updatedAt: Date.now() });
+    this.persist();
     this.notify();
     void this.flush().catch(() => {});
   }
 
   /** Push everything, then pull. Small row count; idempotent. */
-  async flush(): Promise<void> {
-    await this.push();
-    await this.pull();
+  async flush(opts: FlushOptions = {}): Promise<void> {
+    await this.push(opts);
+    await this.pull(opts);
   }
 
-  private async push(): Promise<void> {
+  private async push(opts: FlushOptions = {}): Promise<void> {
     const rows = [...this.rows.values()];
     if (rows.length === 0) return;
     const res = await this.fetchImpl("/api/labels/sync", {
@@ -114,6 +159,7 @@ export class LabelsStore {
         tombstones: rows.filter((l) => l.deleted),
         since: this.cursor,
       }),
+      keepalive: opts.keepalive ?? false,
     });
     if (!res.ok) throw new Error(`labels push failed: ${res.status}`);
     const body = (await res.json()) as { deltas?: unknown; cursor?: unknown };
@@ -124,8 +170,10 @@ export class LabelsStore {
     this.cursor = body.cursor;
   }
 
-  async pull(): Promise<void> {
-    const res = await this.fetchImpl(`/api/labels?since=${this.cursor}`);
+  async pull(opts: FlushOptions = {}): Promise<void> {
+    const res = await this.fetchImpl(`/api/labels?since=${this.cursor}`, {
+      keepalive: opts.keepalive ?? false,
+    });
     if (!res.ok) throw new Error(`labels pull failed: ${res.status}`);
     const body = (await res.json()) as { labels?: unknown; cursor?: unknown };
     if (!Array.isArray(body.labels) || typeof body.cursor !== "number") {
@@ -141,6 +189,7 @@ export class LabelsStore {
     if (valid.length === 0) return;
     const merged = mergeLabelLists([...this.rows.values()], valid);
     this.rows = new Map(merged.map((l) => [l.id, l]));
+    this.persist();
     this.notify();
   }
 }

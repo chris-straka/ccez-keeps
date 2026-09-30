@@ -59,7 +59,11 @@ class WidgetConfigActivity : ComponentActivity() {
         lifecycleScope.launch {
             notes = app.localStore.all()
                 .filter { !it.deleted }
-                .sortedByDescending { it.updatedAt }
+                .sortedWith(
+                    compareByDescending<Note> { it.pinned }
+                        .thenBy { it.order }
+                        .thenByDescending { it.updatedAt },
+                )
         }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {

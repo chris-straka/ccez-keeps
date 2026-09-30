@@ -1,0 +1,1 @@
+ALTER TABLE `notes` ADD `sortOrder` real DEFAULT 0 NOT NULL;

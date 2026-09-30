@@ -16,6 +16,7 @@ interface Recorded {
   method: string;
   path: string;
   body?: unknown;
+  keepalive?: boolean | undefined;
 }
 
 interface PushSent {
@@ -47,7 +48,12 @@ function makeServer(seed: Note[] = []) {
   const fetchFn = (async (url: string, init?: RequestInit) => {
     const u = new URL(url, "http://x");
     const body = init?.body ? JSON.parse(init.body as string) : undefined;
-    requests.push({ method: init?.method ?? "GET", path: u.pathname + u.search, body });
+    requests.push({
+      method: init?.method ?? "GET",
+      path: u.pathname + u.search,
+      body,
+      keepalive: init?.keepalive,
+    });
     if (u.pathname === "/api/notes" && (init?.method ?? "GET") === "GET") {
       const since = Number(u.searchParams.get("since") ?? 0);
       return Response.json({ notes: deltasSince(since), cursor: seq });
@@ -457,6 +463,56 @@ describe("SyncEngine", () => {
       engine.destroy();
     } finally {
       globalThis.fetch = origFetch;
+    }
+  });
+
+  test("flush({ keepalive: true }) marks every lane request keepalive", async () => {
+    const { requests, fetchFn } = makeServer();
+    const store = new MemoryStore();
+    const engine = new SyncEngine(store, { fetchFn, online: () => true }, store);
+    await store.put(note({ id: "1", updatedAt: 100 }));
+    await store.putDrawing({
+      id: "d1",
+      strokes: [{ color: "white", width: 4, points: [{ x: 0, y: 0 }] }],
+      updatedAt: 100,
+      deleted: false,
+    });
+    await engine.flush({ keepalive: true });
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((r) => r.keepalive === true)).toBe(true);
+    engine.destroy();
+  });
+
+  test("hiding the page triggers a keepalive flush (close-time edits upload)", async () => {
+    const { requests, fetchFn } = makeServer();
+    const store = new MemoryStore();
+    await store.put(note({ id: "1", updatedAt: 100 }));
+    const g = globalThis as unknown as Record<string, unknown>;
+    const savedDocument = g["document"];
+    const savedWindow = g["window"];
+    let visibilityHandler: (() => void) | undefined;
+    g["document"] = {
+      visibilityState: "hidden",
+      addEventListener: (_type: string, fn: () => void) => {
+        visibilityHandler = fn;
+      },
+      removeEventListener: () => {},
+    };
+    g["window"] = { addEventListener: () => {}, removeEventListener: () => {} };
+    try {
+      const engine = new SyncEngine(store, { fetchFn, online: () => true });
+      expect(visibilityHandler).toBeDefined();
+      visibilityHandler!();
+      // Joins the hide flight; must settle it, not start a second round.
+      await engine.flush();
+      expect(requests.length).toBeGreaterThan(0);
+      expect(requests.every((r) => r.keepalive === true)).toBe(true);
+      engine.destroy();
+    } finally {
+      if (savedDocument === undefined) delete g["document"];
+      else g["document"] = savedDocument;
+      if (savedWindow === undefined) delete g["window"];
+      else g["window"] = savedWindow;
     }
   });
 });

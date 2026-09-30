@@ -64,6 +64,17 @@ full view renders `dataUrl`. Both fields ride note sync, export/import,
 and backup with no new table or endpoint. Search tier 3 (both clients):
 checklist item text and attachment file names match below the body tier.
 
+## Manual order (amendment, implemented)
+
+`Note.order: number` (missing in old rows/clients = `0`, the legacy
+cluster): drag-to-reorder position, ascending, ties break by `updatedAt`
+after `pinned`. Stored in `notes.sortOrder` (`REAL NOT NULL DEFAULT 0`
+via migration 0008; the column avoids the reserved word `ORDER`). Drops
+fractionate between neighbors (`(prev + next) / 2`, ends `±1`); new
+notes take one less than the current minimum (land on top). Rides note
+sync under LWW like any other field; the server validates finite,
+never interprets. Reminders view keeps fire-time order (ignores it).
+
 ## IndexedDB (lane B implements; interface frozen here)
 
 - Database: `ccez-keeps`, version `2` (v1 databases upgrade in place,
@@ -85,5 +96,6 @@ checklist item text and attachment file names match below the body tier.
 Table `notes(id TEXT PK, title TEXT, body TEXT, color TEXT, pinned INT,
 archived INT, updatedAt INT, deleted INT, labelIds TEXT JSON default
 '[]', reminderAt INT NULL, repeat TEXT NULL, checklist TEXT JSON NULL,
-attachments TEXT JSON default '[]', seq INT)` via Drizzle `db/schema.ts`.
+attachments TEXT JSON default '[]', seq INT, sortOrder REAL NOT NULL
+DEFAULT 0)` via Drizzle `db/schema.ts`.
 Migrations in `db/migrations/` are generated with `bun run db:generate`.

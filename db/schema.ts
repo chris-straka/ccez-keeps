@@ -1,7 +1,7 @@
 // Drizzle schema is the single source of truth for the D1 table.
 // Column set must match contracts/data.md. Lane C: regenerate migrations
 // with `bun run db:generate` after any (plan-approved) change here.
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const notes = sqliteTable("notes", {
   id: text("id").primaryKey(),
@@ -24,6 +24,10 @@ export const notes = sqliteTable("notes", {
   // Image attachments as a JSON array (data URLs, client-downscaled).
   // Validated size caps, never interpreted server-side.
   attachments: text("attachments").notNull().default("[]"),
+  // Manual sort position (drag-to-reorder); 0 = legacy cluster. Validated
+  // finite, never interpreted server-side. The column is sortOrder because
+  // ORDER is a reserved word; the API/Note field stays `order`.
+  order: real("sortOrder").notNull().default(0),
   // Server-assigned write sequence (dissemination order). Conflicts are
   // still decided by updatedAt (wall clock, LWW); seq only decides WHAT
   // the client hasn't seen, so late-arriving old-timestamp rows stay

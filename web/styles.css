@@ -23,6 +23,16 @@ body {
   line-height: 1.5;
 }
 
+/* Form controls ignore body type and fall back to Arial, which reads
+   smaller than the same size in system-ui — inherit so every view shares
+   one family (explicit font-size rules below still apply). */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
 keeps-app {
   display: block;
   min-height: 100vh;
@@ -288,6 +298,21 @@ note-card[data-color="pink"] { background: #4a2f3d; }
 
 note-card[data-pinned] {
   border-color: var(--accent);
+}
+
+/* Card reorder insertion marker: solid edge bar on the drop side
+   (box-shadow so it never shifts layout). */
+note-card.drop-before {
+  box-shadow: -3px 0 0 var(--accent);
+}
+note-card.drop-after {
+  box-shadow: 3px 0 0 var(--accent);
+}
+.grid.is-list note-card.drop-before {
+  box-shadow: 0 -3px 0 var(--accent);
+}
+.grid.is-list note-card.drop-after {
+  box-shadow: 0 3px 0 var(--accent);
 }
 
 /* Light theme: Keep-like pastels. Dark stays the default `:root`. */

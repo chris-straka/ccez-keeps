@@ -19,6 +19,12 @@ data class Note(
     val updatedAt: Long = 0L,
     /** Soft delete. True = tombstone; tombstones sync like notes. */
     val deleted: Boolean = false,
+    /**
+     * Manual sort position (drag-to-reorder), ascending; ties break by
+     * updatedAt. Fractional values slot between rows without renumbering.
+     * Missing (old rows/clients) decodes to 0 with the legacy cluster.
+     */
+    val order: Double = 0.0,
     /** Label ids attached to this note (max 20, each max 64 chars). */
     val labelIds: List<String> = emptyList(),
     /** Reminder fire time, unix epoch ms; null = no reminder. */
@@ -107,6 +113,7 @@ fun isAttachment(a: Attachment): Boolean {
 /** Client-side validation mirroring shared/note.ts isNote. */
 fun isNote(note: Note): Boolean =
     note.id.isNotEmpty() &&
+        note.order.isFinite() &&
         note.labelIds.size <= NoteLimits.MAX_LABELS &&
         note.labelIds.all { it.length <= NoteLimits.MAX_LABEL_ID_LENGTH } &&
         (note.reminderAt == null || note.reminderAt >= 0L) &&
@@ -130,12 +137,13 @@ fun newNote(
     archived: Boolean = false,
     updatedAt: Long = System.currentTimeMillis(),
     deleted: Boolean = false,
+    order: Double = 0.0,
     labelIds: List<String> = emptyList(),
     reminderAt: Long? = null,
     repeat: String? = null,
     checklist: List<ChecklistItem>? = null,
     attachments: List<Attachment> = emptyList(),
-): Note = Note(id, title, body, color, pinned, archived, updatedAt, deleted, labelIds, reminderAt, repeat, checklist, attachments)
+): Note = Note(id, title, body, color, pinned, archived, updatedAt, deleted, order, labelIds, reminderAt, repeat, checklist, attachments)
 
 /**
  * Next fire time for a repeat rule, relative to the fired time. Pure so

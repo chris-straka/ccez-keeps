@@ -60,6 +60,29 @@ function suite(name: string, make: () => Store) {
       ]);
     });
 
+    test("manual order beats recency; missing order sorts with legacy at 0", async () => {
+      await store.put(note({ id: "old-top", updatedAt: 100, order: -5 }));
+      await store.put(note({ id: "new-bottom", updatedAt: 9000, order: 2 }));
+      await store.put(note({ id: "zero", updatedAt: 100, order: 0 }));
+      await store.put(note({ id: "legacy", updatedAt: 5000 }));
+      const legacy = (await store.get("legacy"))!;
+      delete (legacy as unknown as Record<string, unknown>)["order"];
+      await store.put(legacy);
+      expect((await store.list("notes")).map((n) => n.id)).toEqual([
+        "old-top",
+        "legacy",
+        "zero",
+        "new-bottom",
+      ]);
+    });
+
+    test("topOrder() sits above all rows", async () => {
+      expect(await store.topOrder()).toBe(0);
+      await store.put(note({ id: "1", order: 0 }));
+      await store.put(note({ id: "2", order: -3 }));
+      expect(await store.topOrder()).toBe(-4);
+    });
+
     test("remove writes tombstone; restore revives", async () => {
       await store.put(note({ id: "1", updatedAt: 100 }));
       await store.remove("1");

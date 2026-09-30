@@ -24,7 +24,8 @@ const DDL = `CREATE TABLE notes (
   repeat text,
   checklist text,
   attachments text DEFAULT '[]' NOT NULL,
-  seq integer DEFAULT 0 NOT NULL
+  seq integer DEFAULT 0 NOT NULL,
+  sortOrder real DEFAULT 0 NOT NULL
 );
 CREATE TABLE _sync_seq (
   id integer PRIMARY KEY NOT NULL,

@@ -44,10 +44,12 @@ class LocalStore(
         checklist: List<ChecklistItem>? = null,
         attachments: List<Attachment> = emptyList(),
     ): Note {
+        // New notes land on top, mirroring web topOrder().
+        val order = (dao.minSortOrder() ?: 1.0) - 1.0
         val note = newNote(
             id = UUID.randomUUID().toString(), title = title, body = body,
             labelIds = labelIds, reminderAt = reminderAt, repeat = repeat,
-            checklist = checklist, attachments = attachments,
+            checklist = checklist, attachments = attachments, order = order,
         )
         put(note)
         return note

@@ -24,7 +24,8 @@ const DDL = `CREATE TABLE notes (
   repeat text,
   checklist text,
   attachments text DEFAULT '[]' NOT NULL,
-  seq integer DEFAULT 0 NOT NULL
+  seq integer DEFAULT 0 NOT NULL,
+  sortOrder real DEFAULT 0 NOT NULL
 );
 CREATE TABLE _sync_seq (
   id integer PRIMARY KEY NOT NULL,
@@ -144,6 +145,24 @@ describe("isNote labelIds/reminderAt", () => {
       expect(isNote({ ...note({ id: "x" }), reminderAt })).toBe(false);
     }
     expect(isNote({ ...note({ id: "x" }), reminderAt: null })).toBe(true);
+  });
+});
+
+describe("isNote order", () => {
+  test("defaults to 0; missing stays valid (old rows/clients)", () => {
+    const n = newNote({ id: "a" });
+    expect(n.order).toBe(0);
+    expect(isNote(n)).toBe(true);
+    const { order, ...legacy } = n;
+    expect(order).toBe(0);
+    expect(isNote(legacy)).toBe(true);
+  });
+
+  test("accepts fractional orders, rejects non-finite", () => {
+    expect(isNote(note({ id: "x", order: -1.5 }))).toBe(true);
+    for (const order of [Number.NaN, Number.POSITIVE_INFINITY, "1", true, null]) {
+      expect(isNote({ ...note({ id: "x" }), order })).toBe(false);
+    }
   });
 });
 

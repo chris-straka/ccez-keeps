@@ -13,6 +13,13 @@ export interface Note {
   updatedAt: number;
   /** Soft delete. True = tombstone; tombstones sync like notes. */
   deleted: boolean;
+  /**
+   * Manual sort position (drag-to-reorder), ascending; ties break by
+   * updatedAt. Fractional values slot between rows without renumbering;
+   * new notes take one less than the current minimum (land on top).
+   * Missing (old rows/clients) sorts as 0 with the legacy cluster.
+   */
+  order: number;
   /** Label ids attached to this note (max 20, each max 64 chars). */
   labelIds: string[];
   /** Reminder fire time, unix epoch ms; null = no reminder. */
@@ -145,6 +152,9 @@ export function isNote(value: unknown): value is Note {
     typeof n["updatedAt"] === "number" &&
     Number.isFinite(n["updatedAt"]) &&
     typeof n["deleted"] === "boolean" &&
+    // Released clients/rows predate this field; missing sorts as 0.
+    (n["order"] === undefined ||
+      (typeof n["order"] === "number" && Number.isFinite(n["order"]))) &&
     Array.isArray(n["labelIds"]) &&
     (n["labelIds"] as unknown[]).length <= NOTE_LIMITS.maxLabels &&
     (n["labelIds"] as unknown[]).every(
@@ -183,6 +193,7 @@ export function newNote(
     pinned: false,
     archived: false,
     deleted: false,
+    order: 0,
     labelIds: [],
     reminderAt: null,
     repeat: null,

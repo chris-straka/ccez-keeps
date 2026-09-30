@@ -95,6 +95,21 @@ export abstract class BaseStore implements Store {
     this.notify();
   }
 
+  /**
+   * Order placing a note above all current rows: new notes land on top.
+   * Missing orders (old rows) count as 0, matching compareNotes.
+   */
+  async topOrder(): Promise<number> {
+    await this.ready;
+    const all = await this.loadAll();
+    let min = 1;
+    for (const n of all) {
+      const o = n.order ?? 0;
+      if (o < min) min = o;
+    }
+    return min - 1;
+  }
+
   async exportJson(): Promise<string> {
     const notes = await this.all();
     return JSON.stringify({ version: 1, notes });
@@ -123,8 +138,11 @@ export abstract class BaseStore implements Store {
   }
 }
 
-/** Pinned first, then newest. */
+/** Pinned first, then manual order ascending, then newest. */
 export function compareNotes(a: Note, b: Note): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  const ao = a.order ?? 0;
+  const bo = b.order ?? 0;
+  if (ao !== bo) return ao - bo;
   return b.updatedAt - a.updatedAt;
 }

@@ -33,6 +33,8 @@ data class NoteEntity(
     val archived: Int = 0,
     val updatedAt: Long = 0L,
     val deleted: Int = 0,
+    /** Manual sort position, ascending; 0 = legacy cluster (v6). */
+    val sortOrder: Double = 0.0,
     /** Label ids as a JSON array string (v3; dangling ids are inert). */
     val labelIds: String = "[]",
     /** Reminder fire time, unix epoch ms; null = none (v3). */
@@ -49,6 +51,7 @@ fun NoteEntity.toNote(): Note = Note(
     id = id, title = title, body = body, color = color,
     pinned = pinned == 1, archived = archived == 1,
     updatedAt = updatedAt, deleted = deleted == 1,
+    order = sortOrder,
     labelIds = try {
         apiJson.decodeFromString<List<String>>(labelIds)
     } catch (e: Exception) {
@@ -64,6 +67,7 @@ fun Note.toEntity(): NoteEntity = NoteEntity(
     id = id, title = title, body = body, color = color,
     pinned = if (pinned) 1 else 0, archived = if (archived) 1 else 0,
     updatedAt = updatedAt, deleted = if (deleted) 1 else 0,
+    sortOrder = order,
     labelIds = apiJson.encodeToString(labelIds),
     reminderAt = reminderAt,
     repeat = repeat,
@@ -90,8 +94,11 @@ private fun decodeAttachments(raw: String): List<Attachment> {
 
 @Dao
 interface NoteDao {
-    @Query("SELECT * FROM notes ORDER BY pinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes ORDER BY pinned DESC, sortOrder ASC, updatedAt DESC")
     fun observeAll(): Flow<List<NoteEntity>>
+
+    @Query("SELECT MIN(sortOrder) FROM notes")
+    suspend fun minSortOrder(): Double?
 
     @Query("SELECT * FROM notes")
     suspend fun all(): List<NoteEntity>
@@ -111,7 +118,7 @@ interface NoteDao {
 
 @Database(
     entities = [NoteEntity::class, DrawingEntity::class, LabelEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class KeepsDatabase : RoomDatabase() {
@@ -128,5 +135,15 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `notes` ADD COLUMN `checklist` TEXT")
         db.execSQL("ALTER TABLE `notes` ADD COLUMN `attachments` TEXT NOT NULL DEFAULT '[]'")
+    }
+}
+
+/**
+ * v5 -> v6: note sortOrder column (manual reorder). Existing rows default
+ * to 0, the legacy cluster, preserving recency order among themselves.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notes` ADD COLUMN `sortOrder` REAL NOT NULL DEFAULT 0.0")
     }
 }

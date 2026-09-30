@@ -8,7 +8,7 @@ import { newNote, type Note } from "../shared/note.js";
 import { createApp } from "../worker/index.js";
 import type { NotesDb } from "../worker/notes.js";
 
-// Must match db/migrations/0000_*..0006_* (kept inline: tests cannot run
+// Must match db/migrations/0000_*..0008_* (kept inline: tests cannot run
 // drizzle-kit, and drift here fails loudly against prod DDL).
 const DDL = `CREATE TABLE notes (
   id text PRIMARY KEY NOT NULL,
@@ -24,7 +24,8 @@ const DDL = `CREATE TABLE notes (
   repeat text,
   checklist text,
   attachments text DEFAULT '[]' NOT NULL,
-  seq integer DEFAULT 0 NOT NULL
+  seq integer DEFAULT 0 NOT NULL,
+  sortOrder real DEFAULT 0 NOT NULL
 );
 CREATE TABLE _sync_seq (
   id integer PRIMARY KEY NOT NULL,

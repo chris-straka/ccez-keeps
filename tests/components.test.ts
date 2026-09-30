@@ -183,6 +183,130 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  function cardOrder(t: { app: KeepsApp }): Array<string | undefined> {
+    return [...t.app.querySelectorAll("note-card")].map(
+      (c) => (c as HTMLElement).dataset["noteId"],
+    );
+  }
+
+  function cardDrop(id: string, x: number, y: number): Event {
+    const drop = new Event("drop", { bubbles: true }) as Event & {
+      dataTransfer: { getData: () => string };
+      clientX: number;
+      clientY: number;
+    };
+    drop.dataTransfer = { getData: () => id };
+    drop.clientX = x;
+    drop.clientY = y;
+    return drop;
+  }
+
+  function stubRect(card: Element, width: number, height: number): void {
+    (card as HTMLElement).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width, height }) as DOMRect;
+  }
+
+  test("dragging a card right of another inserts after it", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    expect(cardOrder(t)).toEqual(["b", "a"]);
+    const target = t.cards()[1]!;
+    stubRect(target, 100, 50);
+    target.dispatchEvent(cardDrop("b", 75, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("b"))?.order).toBe(1);
+    expect(cardOrder(t)).toEqual(["a", "b"]);
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("dragging a card left of another inserts before it", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    const target = t.cards()[1]!;
+    stubRect(target, 100, 50);
+    target.dispatchEvent(cardDrop("b", 25, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("b"))?.order).toBe(-1);
+    expect(cardOrder(t)).toEqual(["b", "a"]);
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("dropping between cards fractionates the order", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100, order: -10 }),
+      note({ id: "b", title: "B", updatedAt: 200, order: 0 }),
+      note({ id: "c", title: "C", updatedAt: 300, order: 10 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    expect(cardOrder(t)).toEqual(["a", "b", "c"]);
+    const target = t.cards()[1]!;
+    stubRect(target, 100, 50);
+    target.dispatchEvent(cardDrop("c", 25, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("c"))?.order).toBe(-5);
+    expect(cardOrder(t)).toEqual(["a", "c", "b"]);
+    t.cleanup();
+  });
+
+  test("dropping a card on itself is a no-op", async () => {
+    const t = mount([note({ id: "a", title: "A", updatedAt: 100 })]);
+    await t.ready;
+    await t.tick();
+    const target = t.cards()[0]!;
+    stubRect(target, 100, 50);
+    target.dispatchEvent(cardDrop("a", 75, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("a"))?.order).toBe(0);
+    expect(t.stats().pushes).toBe(0);
+    t.cleanup();
+  });
+
+  test("card drops are ignored in the reminders view (fire-time order)", async () => {
+    const t = mount([note({ id: "r", title: "R", updatedAt: 100, reminderAt: 5000 })]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="reminders"]')!.click();
+    await t.tick();
+    const target = t.cards()[0]!;
+    stubRect(target, 100, 50);
+    target.dispatchEvent(cardDrop("r", 75, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("r"))?.order).toBe(0);
+    expect(t.stats().pushes).toBe(0);
+    t.cleanup();
+  });
+
+  test("notes created in the UI land on top", async () => {
+    const t = mount([note({ id: "a", title: "A", updatedAt: 100 })]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>(".composer-closed")!.click();
+    await t.tick();
+    t.app.querySelector<HTMLInputElement>(".composer-title")!.value = "New";
+    t.app.querySelector<HTMLButtonElement>('[data-composer="save"]')!.click();
+    await t.tick();
+    await t.tick();
+    const ids = cardOrder(t);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe("a");
+    expect((await t.store.get(ids[0]!))?.order).toBeLessThan(0);
+    t.cleanup();
+  });
+
   test("reminders view offers a reminder-first composer", async () => {
     const t = mount();
     await t.ready;
@@ -696,6 +820,11 @@ describe("keeps-app", () => {
     expect(deleted).toEqual(["ccez-keeps-old"]);
     expect(reloaded).toBe(true);
     t.cleanup();
+  });
+
+  test("form controls inherit the app font (bare buttons fall back to Arial)", async () => {
+    const css = await Bun.file("web/styles.css").text();
+    expect(css).toMatch(/button,\s*input,\s*textarea,\s*select\s*\{\s*font-family:\s*inherit;/);
   });
 
   test("sync status survives re-renders; only auth offers re-login", async () => {

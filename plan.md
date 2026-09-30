@@ -70,6 +70,14 @@ input accepted as null for pre-repeat clients). Firing clients advance the row
 past each fire and reschedule, converging the next fire time through note sync;
 server validates, never fires.
 
+Contract amendment (manual order, implemented): `Note.order: number`
+(stored in `notes.sortOrder` via migration 0008, `REAL NOT NULL DEFAULT 0`;
+missing on input/output accepted as 0 for pre-order clients). List views
+sort pinned, then order ascending, then `updatedAt` desc; drops
+fractionate between neighbors and new notes take minimum minus one.
+Android carries the field (Room v6, `sortOrder` column) and sorts by it;
+web owns the drag UI for now.
+
 Schema: `notes(id TEXT PK, title TEXT, body TEXT, color TEXT, pinned INT, archived INT, updatedAt INT, deleted INT)` owned by Drizzle schema file; D1 migration generated from it.
 
 ## Work Plan

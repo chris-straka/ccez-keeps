@@ -201,9 +201,39 @@ describe("keeps-app", () => {
     return drop;
   }
 
-  function stubRect(card: Element, width: number, height: number): void {
+  function stubRect(
+    card: Element,
+    width: number,
+    height: number,
+    left = 0,
+    top = 0,
+  ): void {
     (card as HTMLElement).getBoundingClientRect = () =>
-      ({ left: 0, top: 0, width, height }) as DOMRect;
+      ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+        x: left,
+        y: top,
+      }) as DOMRect;
+  }
+
+  function gapDragOver(x: number, y: number): Event {
+    const over = new Event("dragover", {
+      bubbles: true,
+      cancelable: true,
+    }) as Event & {
+      dataTransfer: { dropEffect: string };
+      clientX: number;
+      clientY: number;
+    };
+    over.dataTransfer = { dropEffect: "none" };
+    over.clientX = x;
+    over.clientY = y;
+    return over;
   }
 
   test("dragging a card right of another inserts after it", async () => {
@@ -287,6 +317,83 @@ describe("keeps-app", () => {
     await t.tick();
     await t.tick();
     expect((await t.store.get("r"))?.order).toBe(0);
+    expect(t.stats().pushes).toBe(0);
+    t.cleanup();
+  });
+
+  test("dropping in the gap right of a card inserts after it", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    expect(cardOrder(t)).toEqual(["b", "a"]);
+    const [first, second] = t.cards();
+    stubRect(first!, 100, 50, 0, 0);
+    stubRect(second!, 100, 50, 110, 0);
+    // Way past the last card: the drop lands on the grid, not a card.
+    t.app.querySelector(".grid")!.dispatchEvent(cardDrop("b", 400, 25));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("b"))?.order).toBe(1);
+    expect(cardOrder(t)).toEqual(["a", "b"]);
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("dropping below the last card moves it to the end", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    const [first, second] = t.cards();
+    stubRect(first!, 100, 50, 0, 0);
+    stubRect(second!, 100, 50, 110, 0);
+    t.app.querySelector(".grid")!.dispatchEvent(cardDrop("b", 160, 200));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("b"))?.order).toBe(1);
+    expect(cardOrder(t)).toEqual(["a", "b"]);
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("dragover in a grid gap accepts the drop and marks the nearest card", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    const [first, second] = t.cards();
+    stubRect(first!, 100, 50, 0, 0);
+    stubRect(second!, 100, 50, 110, 0);
+    const over = gapDragOver(400, 25);
+    t.app.querySelector(".grid")!.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    expect(second!.classList.contains("is-drop")).toBe(true);
+    expect(second!.classList.contains("drop-after")).toBe(true);
+    t.cleanup();
+  });
+
+  test("dropping in a gap near the dragged card itself is a no-op", async () => {
+    const t = mount([
+      note({ id: "a", title: "A", updatedAt: 100 }),
+      note({ id: "b", title: "B", updatedAt: 200 }),
+    ]);
+    await t.ready;
+    await t.tick();
+    const [first, second] = t.cards();
+    stubRect(first!, 100, 50, 0, 0);
+    stubRect(second!, 100, 50, 110, 0);
+    // Below card B: nearest is B itself, already accounted for.
+    t.app.querySelector(".grid")!.dispatchEvent(cardDrop("b", 50, 200));
+    await t.tick();
+    await t.tick();
+    expect((await t.store.get("b"))?.order).toBe(0);
     expect(t.stats().pushes).toBe(0);
     t.cleanup();
   });

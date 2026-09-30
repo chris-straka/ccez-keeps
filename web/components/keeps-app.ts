@@ -1141,15 +1141,41 @@ export class KeepsApp extends HTMLElement {
     // compareNotes does (notes/archive/trash, label-filtered included).
     if (this.view === "reminders") return null;
     const el = e.target as HTMLElement | null;
-    return el?.closest?.("note-card") as HTMLElement | null;
+    const card = el?.closest?.("note-card") as HTMLElement | null;
+    if (card) return card;
+    // Gaps between cards (and past the row end) hit the grid itself:
+    // resolve to the nearest card so those drops land somewhere sane.
+    if (!el?.closest?.(".grid")) return null;
+    return this.nearestCard(e.clientX, e.clientY);
+  }
+
+  /** Visible card whose center is closest to the point, if any. */
+  private nearestCard(x: number, y: number): HTMLElement | null {
+    let best: HTMLElement | null = null;
+    let bestDist = Infinity;
+    for (const node of this.querySelectorAll("note-card")) {
+      const card = node as HTMLElement;
+      const rect = card.getBoundingClientRect();
+      const dx = x - (rect.left + rect.width / 2);
+      const dy = y - (rect.top + rect.height / 2);
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = card;
+      }
+    }
+    return best;
   }
 
   /** Insertion side from the pointer: x-midpoint in grid, y-midpoint in list. */
   private dropAfter(card: HTMLElement, e: DragEvent): boolean {
     const rect = card.getBoundingClientRect();
-    return this.listMode
-      ? e.clientY > rect.top + rect.height / 2
-      : e.clientX > rect.left + rect.width / 2;
+    if (this.listMode) return e.clientY > rect.top + rect.height / 2;
+    // Gap drops above/below the card's row band sort before/after it;
+    // drops over the card (or beside it in-band) split on x.
+    if (e.clientY < rect.top) return false;
+    if (e.clientY > rect.bottom) return true;
+    return e.clientX > rect.left + rect.width / 2;
   }
 
   private async onDrop(event: DragEvent): Promise<void> {
@@ -1189,7 +1215,7 @@ export class KeepsApp extends HTMLElement {
     await this.refresh();
   }
 
-  /** Drop onto another card: slot the dragged note before/after it. */
+  /** Drop onto another card (or a grid gap near it): slot before/after it. */
   private async dropReorder(event: DragEvent, id: string | undefined): Promise<void> {
     if (!id) return;
     const card = this.reorderTarget(event);

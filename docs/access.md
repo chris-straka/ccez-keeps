@@ -10,9 +10,9 @@ Team domain: `silent-bread-ade3.cloudflareaccess.com`
 
 | App | Domain | Policy | Purpose |
 | --- | --- | --- | --- |
-| `ccez-keeps` | `keeps.cstraka.dev` | `owner-only` (allow) | Login gate for the app shell. Its AUD is `ACCESS_AUD` in `wrangler.jsonc`. |
-| `ccez-keeps-api` | `keeps.cstraka.dev/api/*` (+ `ccez-keeps.chris-e69.workers.dev/api/*`) | `api-worker-gate` (**bypass**, everyone) | Lets API traffic through without an Access session; the worker does the real check. Side effect: Access never appends `Cf-Access-JWT-Assertion` on this path — that is why the worker also accepts the cookie (below). Do not "fix" this to Allow without also handling the header. |
-| `ccez-keeps-manifest` | `keeps.cstraka.dev/manifest.webmanifest` | `public-manifest` (**bypass**, everyone) | Browsers fetch the manifest credentialless, so an Allow policy redirects it to login and CORS-blocks PWA installability. |
+| `ccez-keeps` | worker destination (all hostnames) | `owner-only` (allow) | Login gate for the app shell. Its AUD is `ACCESS_AUD` in `wrangler.jsonc`. |
+| `ccez-keeps-api` | `keeps.ccez.uk/api/*` (+ `keeps.cstraka.dev/api/*`, `ccez-keeps.chris-e69.workers.dev/api/*`) | `api-worker-gate` (**bypass**, everyone) | Lets API traffic through without an Access session; the worker does the real check. Side effect: Access never appends `Cf-Access-JWT-Assertion` on this path — that is why the worker also accepts the cookie (below). Do not "fix" this to Allow without also handling the header. |
+| `ccez-keeps-manifest` | `keeps.ccez.uk/manifest.webmanifest` (+ `keeps.cstraka.dev/manifest.webmanifest`) | `public-manifest` (**bypass**, everyone) | Browsers fetch the manifest credentialless, so an Allow policy redirects it to login and CORS-blocks PWA installability. |
 
 ## How the worker verifies (fail-closed)
 

@@ -64,7 +64,7 @@ bun run db:generate  # then apply the new file --local and --remote
 
 ## Deploy / rollback
 
-Live: https://keeps.cstraka.dev (also `ccez-keeps.chris-e69.workers.dev`).
+Live: https://keeps.ccez.uk (also `ccez-keeps.chris-e69.workers.dev`; `keeps.cstraka.dev` still works until that domain expires).
 Both hostnames sit behind the `ccez-keeps` Access app (worker destination);
 allowlist: exact email `skylake112@outlook.com` via the `owner-only` policy.
 `/api/*` on both hostnames is Bypassed by the `ccez-keeps-api` Access app

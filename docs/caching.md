@@ -27,5 +27,5 @@ plain reload. Navigations also go to the network first (cache is the
 offline fallback), so an expired Access session redirects to login
 instead of serving a shell whose sync 401s forever. If the *UI itself*
 looks old, the tab is pinned to a stale worker: close every
-`keeps.cstraka.dev` tab and reopen, or DevTools → Application →
+`keeps.ccez.uk` tab and reopen, or DevTools → Application →
 Storage → Clear site data, then reload.

@@ -32,7 +32,7 @@ android {
         // Override with KEEPS_BASE_URL for local work (e.g. screenshot
         // builds against `wrangler dev` via http://10.0.2.2:8787).
         val baseUrl = System.getenv("KEEPS_BASE_URL")?.takeIf { it.isNotBlank() }
-            ?: "https://keeps.cstraka.dev"
+            ?: "https://keeps.ccez.uk"
         buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
     }
 

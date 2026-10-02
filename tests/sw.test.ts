@@ -5,7 +5,7 @@
 // ServiceWorker globals (`self`, `caches`, `fetch`) injected as fakes.
 import { beforeEach, describe, expect, test } from "bun:test";
 
-const ORIGIN = "https://keeps.cstraka.dev";
+const ORIGIN = "https://keeps.ccez.uk";
 const LOGIN_URL = "https://silent-bread-ade3.cloudflareaccess.com/cdn-cgi/access/login/x";
 
 interface FakeResponse {

@@ -139,7 +139,7 @@ export class NoteCard extends HTMLElement {
     const checklist = renderChecklistPreview(note.checklist);
     const attachments = renderAttachmentPreview(note.attachments);
     this.innerHTML = `
-      <div class="card-title">${escapeHtml(note.title) || "&nbsp;"}</div>
+      ${note.title ? `<div class="card-title">${escapeHtml(note.title)}</div>` : ""}
       ${attachments}
       ${checklist || `<div class="card-body">${renderBody(note.body)}</div>`}
       ${chips ? `<div class="label-chips">${chips}</div>` : ""}

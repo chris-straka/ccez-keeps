@@ -81,6 +81,7 @@ export class KeepsApp extends HTMLElement {
   private editingId: string | null = null;
   private composerOpen = false;
   private navOpen = false;
+  private masonry: ResizeObserver | undefined;
   private unsub: (() => void) | undefined;
   private devices: DevicesClient | undefined;
   private devicesCache: DeviceInfo[] | null = null;
@@ -891,6 +892,30 @@ export class KeepsApp extends HTMLElement {
             : "No notes yet";
       grid.appendChild(empty);
     }
+    this.layoutMasonry(grid as HTMLElement);
+  }
+
+  /**
+   * Keep-style masonry on top of the CSS grid: 1px rows, each child spans
+   * its own height plus the gap, so short cards pack under short cards
+   * instead of waiting for the row's tallest. DOM order (and so keyboard
+   * and drag order) stays row-major. No-op in list mode and without
+   * ResizeObserver (tests, old browsers): plain grid rows still work.
+   */
+  private layoutMasonry(grid: HTMLElement): void {
+    this.masonry?.disconnect();
+    this.masonry = undefined;
+    if (this.listMode || typeof ResizeObserver === "undefined") return;
+    grid.classList.add("is-masonry");
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const span = (el: Element): void => {
+      const h = el.getBoundingClientRect().height;
+      (el as HTMLElement).style.gridRowEnd = `span ${Math.max(1, Math.ceil(h + gap))}`;
+    };
+    this.masonry = new ResizeObserver((entries) => {
+      for (const entry of entries) span(entry.target);
+    });
+    for (const child of grid.children) this.masonry.observe(child);
   }
 
   private openEditor(

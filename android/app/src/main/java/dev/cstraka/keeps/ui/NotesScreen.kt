@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -329,7 +330,7 @@ fun NotesScreen(
         }
     }
 
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(colorScheme = keepsColorScheme(dark)) {
         Surface(modifier = Modifier.fillMaxSize()) {
         ModalNavigationDrawer(
             drawerState = drawer,
@@ -1328,10 +1329,26 @@ fun NoteDialog(
             ?.map { it.copy(text = it.text.take(NoteLimits.MAX_CHECKLIST_TEXT)) }
     fun bodyForSave(): String =
         checklistForSave()?.joinToString("\n") { it.text } ?: b.text
+    // Back / tap-outside keep the draft like Keep does; only Cancel discards.
+    // Unchanged notes just close, so reopening never bumps updatedAt.
+    fun closeKeeping() {
+        val changed = t != initialTitle || bodyForSave() != initialBody ||
+            c != initialColor || selIds.toList() != initialLabelIds ||
+            reminder != initialReminderAt || repeatSel != initialRepeat ||
+            checklistForSave() != initialChecklist || staged.toList() != initialAttachments
+        if (changed) {
+            onConfirm(
+                t, bodyForSave(), c, selIds.toList(), reminder, repeatSel,
+                checklistForSave(), staged.toList(),
+            )
+        } else {
+            onDismiss()
+        }
+    }
     // Focus-mode editor: full-screen dim, centered card, title focused.
     // (AlertDialog's stock scrim and sizing bury the editor on big phones.)
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = ::closeKeeping,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
@@ -1340,7 +1357,7 @@ fun NoteDialog(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss,
+                    onClick = ::closeKeeping,
                 )
                 .padding(horizontal = 24.dp, vertical = 32.dp),
             contentAlignment = Alignment.Center,
@@ -1418,13 +1435,16 @@ fun NoteDialog(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    // 12sp: full labels fit the row instead of truncating.
+                    // 12sp and no side padding: full labels fit the row instead of
+                    // truncating to "Ch"/"Ph" on 412dp phones.
+                    val toolPad = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
                     TextButton(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             undo()
                         }, enabled = histIdx > 0,
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("Undo", maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1432,6 +1452,7 @@ fun NoteDialog(
                             redo()
                         }, enabled = histIdx < history.size - 1,
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("Redo", maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1439,6 +1460,7 @@ fun NoteDialog(
                             wrapSelection("**", "**")
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("B", fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1446,6 +1468,7 @@ fun NoteDialog(
                             wrapSelection("*", "*")
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("I", fontStyle = FontStyle.Italic, maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1453,13 +1476,15 @@ fun NoteDialog(
                             toggleList()
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("List", maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                             toChecklistMode()
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.3f),
+                        contentPadding = toolPad,
                     ) { Text("Checks", maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1475,6 +1500,7 @@ fun NoteDialog(
                             }
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("Photo", maxLines = 1, fontSize = 12.sp) }
                     TextButton(
                         onClick = {
@@ -1482,6 +1508,7 @@ fun NoteDialog(
                             drawOpen = true
                         },
                         modifier = Modifier.weight(1f),
+                        contentPadding = toolPad,
                     ) { Text("Draw", maxLines = 1, fontSize = 12.sp) }
                 }
                 if (staged.isNotEmpty()) {

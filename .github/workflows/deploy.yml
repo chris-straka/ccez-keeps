@@ -52,3 +52,13 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Ideas feed credential (worker/ideas.ts): only the SHA-256 of the
+      # reader token lives here; the raw token stays on the intake host
+      # (~/.config/mediaforge/keeps-ideas.token). Unset = the feed 503s.
+      - name: Set the ideas reader hash
+        if: env.IDEAS_READER_SHA256 != ''
+        run: printf '%s' "$IDEAS_READER_SHA256" | bunx wrangler@4 secret put IDEAS_READER_SHA256
+        env:
+          IDEAS_READER_SHA256: ${{ secrets.IDEAS_READER_SHA256 }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

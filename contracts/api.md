@@ -112,6 +112,21 @@ accepted as `null` for pre-repeat clients). All three ride note sync free
 under the same per-note LWW and are validated by `isNote` (400 on
 violation, like any other malformed note).
 
+## Ideas feed (read-only, for mediaforge intake)
+
+- `GET /api/ideas?since=<updatedAt ms>` -> `{ideas: [{id, title, text,
+  labels, archived, updatedAt}], serverTime}`. Live notes carrying a
+  label whose name is "Ideas"/"Idea" in any case (`isIdeasLabelName`),
+  changed after `since` (a wall-clock `updatedAt`, not a seq cursor).
+  `text` is the body plus checklist rows; attachments, drawings and
+  reminders are never returned.
+- Auth: `Authorization: Bearer <ideas reader token>` only, matched against
+  the Worker secret `IDEAS_READER_SHA256`. Neither an Access session nor a
+  device token opens it, and this token opens no other route (it is not
+  in `device_tokens`). Non-GET -> 405; wrong/missing token -> 401; secret
+  unset -> 503. Secret set by `deploy.yml` from the GitHub secret of the
+  same name; the raw token lives only on the intake host.
+
 ## Conflict rule (both sides, identical)
 
 Newer `updatedAt` wins; equal timestamps → lexicographically larger JSON

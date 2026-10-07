@@ -58,3 +58,15 @@ export function mergeLabelLists(a: Label[], b: Label[]): Label[] {
 export function labelsChangedSince(labels: Label[], since: number): Label[] {
   return labels.filter((l) => l.updatedAt > since);
 }
+
+/** Name the Idea button gives its label. */
+export const IDEAS_LABEL_NAME = "Ideas";
+
+/**
+ * True for the owner's ideas label however it was made: the Idea button's
+ * "Ideas", or one typed by hand as "ideas", "Idea", " IDEAS ". The ideas
+ * reader (worker/ideas.ts) and both Idea buttons use this one rule.
+ */
+export function isIdeasLabelName(name: string): boolean {
+  return /^ideas?$/i.test(name.trim());
+}

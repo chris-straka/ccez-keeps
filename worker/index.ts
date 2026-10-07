@@ -24,6 +24,7 @@ import {
 } from "./devices.js";
 import { applySync, getDeltas, type NotesDb } from "./notes.js";
 import { purgeTrash } from "./purge.js";
+import { checkIdeasReader, listIdeas } from "./ideas.js";
 
 export interface WorkerEnv {
   // Minimal surface we use; avoids DOM-vs-Workers lib clashes.
@@ -32,12 +33,16 @@ export interface WorkerEnv {
   /** Agent D sets both in prod; unset = local-dev bypass with warning. */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
+  /** SHA-256 hex of the ideas reader token (wrangler secret); unset = 503. */
+  IDEAS_READER_SHA256?: string;
 }
 
 export interface AppDeps {
   db: NotesDb;
   assetsFetch: (request: Request) => Promise<Response> | Response;
   access: AccessEnv;
+  /** SHA-256 hex of the read-only ideas token (worker/ideas.ts). */
+  ideasReaderHash?: string | undefined;
 }
 
 function readNotes(value: unknown): Note[] | null {
@@ -72,6 +77,16 @@ export function createApp(deps: AppDeps) {
   // Enroll itself always requires Access, so a device token can never mint
   // another device token.
   app.use("/api/*", async (c, next) => {
+    // The ideas feed has its own credential and accepts nothing else:
+    // neither an Access session nor a device token opens it, and its
+    // token opens no other route (worker/ideas.ts).
+    if (c.req.path === "/api/ideas") {
+      if (c.req.method !== "GET") return c.json({ error: "read-only" }, 405);
+      const ideas = await checkIdeasReader(c.req.raw, deps.ideasReaderHash);
+      if (!ideas.ok) return c.json({ error: ideas.message }, ideas.status);
+      await next();
+      return;
+    }
     // The exchange endpoint is pre-auth: the single-use code IS the
     // credential, so neither gate applies to it.
     if (c.req.path === "/api/devices/exchange") {
@@ -237,6 +252,17 @@ export function createApp(deps: AppDeps) {
     return c.json({ deviceId, token });
   });
 
+  // GET /api/ideas?since=<updatedAt ms> -> { ideas, serverTime }
+  app.get("/api/ideas", async (c) => {
+    const since = readSince(
+      c.req.query("since") === undefined ? undefined : Number(c.req.query("since")),
+    );
+    if (since === null) {
+      return c.json({ error: "since must be a non-negative number" }, 400);
+    }
+    return c.json({ ideas: await listIdeas(deps.db, since), serverTime: Date.now() });
+  });
+
   // Frozen: GET /api/notes?since=<cursor> -> { notes, cursor }
   app.get("/api/notes", async (c) => {
     const since = readSince(
@@ -369,6 +395,7 @@ export default {
         db: drizzle(env.DB),
         assetsFetch: (req) => env.ASSETS.fetch(req),
         access: { teamDomain: env.ACCESS_TEAM_DOMAIN, aud: env.ACCESS_AUD },
+        ideasReaderHash: env.IDEAS_READER_SHA256,
       });
       return app.fetch(request, env);
     }

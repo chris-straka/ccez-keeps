@@ -90,8 +90,40 @@ export function createApp(deps: AppDeps) {
       }
     }
     const result = await checkAccess(c.req.raw, deps.access);
-    if (!result.ok) return c.json({ error: result.message }, result.status);
+    if (!result.ok) {
+      // /api/* is Bypassed at the edge (docs/access.md), so a fresh
+      // browser never sees the Access login here. Bounce the Custom Tab
+      // through /enroll, which Access does gate; it logs in there and
+      // comes back with the session cookie. `retry` stops a loop.
+      const url = new URL(c.req.url);
+      const to = url.searchParams.get("to") ?? "";
+      if (
+        result.status === 401 &&
+        url.pathname === "/api/devices/code" &&
+        to.startsWith("keeps://") &&
+        !url.searchParams.has("retry")
+      ) {
+        return c.redirect(`/enroll?to=${encodeURIComponent(to)}`, 302);
+      }
+      return c.json({ error: result.message }, result.status);
+    }
     await next();
+  });
+
+  // Access-gated landing for the phone's Custom Tab (see the gate above).
+  // Reaching it means Access already logged the browser in; hand it back
+  // to the code bridge, which now sees the CF_Authorization cookie.
+  app.get("/enroll", async (c) => {
+    const to = c.req.query("to") ?? "";
+    if (!to.startsWith("keeps://")) {
+      return c.json({ error: "to must be a keeps:// callback URL" }, 400);
+    }
+    const result = await checkAccess(c.req.raw, deps.access);
+    if (!result.ok) return c.json({ error: result.message }, result.status);
+    return c.redirect(
+      `/api/devices/code?to=${encodeURIComponent(to)}&retry=1`,
+      302,
+    );
   });
 
   // Device enrollment + management. Enroll requires the Access gate above;
@@ -332,7 +364,7 @@ export function createApp(deps: AppDeps) {
 export default {
   fetch(request: Request, env: WorkerEnv, _ctx: ExecutionContext) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith("/api/")) {
+    if (url.pathname.startsWith("/api/") || url.pathname === "/enroll") {
       const app = createApp({
         db: drizzle(env.DB),
         assetsFetch: (req) => env.ASSETS.fetch(req),

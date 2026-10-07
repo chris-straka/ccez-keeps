@@ -187,9 +187,28 @@ describe("Bearer device gate on sync routes", () => {
     expect(missing.status).toBe(400);
   });
 
-  test("locked app: code without Access JWT is 401 (Bearer cannot mint codes)", async () => {
+  test("locked app: code without Access JWT never mints (Bearer cannot mint codes)", async () => {
+    // A fresh browser is sent to the Access-gated /enroll login bounce...
     const res = await locked.request("http://localhost/api/devices/code?to=keeps://enroll");
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/enroll?to=keeps%3A%2F%2Fenroll");
+    // ...which itself refuses without the Access session...
+    const bounce = await locked.request("http://localhost/enroll?to=keeps%3A%2F%2Fenroll");
+    expect(bounce.status).toBe(401);
+    // ...and the return leg 401s instead of looping.
+    const retry = await locked.request("http://localhost/api/devices/code?to=keeps://enroll&retry=1");
+    expect(retry.status).toBe(401);
+    // Non-keeps callbacks never bounce.
+    const evil = await locked.request("http://localhost/api/devices/code?to=https://evil.example.com/");
+    expect(evil.status).toBe(401);
+  });
+
+  test("/enroll with a session hands back to the code bridge", async () => {
+    const res = await app.request("http://localhost/enroll?to=keeps%3A%2F%2Fenroll");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/api/devices/code?to=keeps%3A%2F%2Fenroll&retry=1");
+    const bad = await app.request("http://localhost/enroll?to=https://evil.example.com/");
+    expect(bad.status).toBe(400);
   });
 
   test("code -> 302 to keeps:// callback -> exchange mints a device, once", async () => {

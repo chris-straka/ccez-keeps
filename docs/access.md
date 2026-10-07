@@ -41,3 +41,12 @@ Open the failing request → Response tab shows the exact cause
 `[keeps] access denied: <reason>` in Workers Logs, so past incidents are
 debuggable without the browser. Device tokens (`Authorization: Bearer`)
 bypass this gate; see the enroll flow in `worker/devices.ts`.
+
+## Phone enrollment and the api Bypass
+
+Because of the `/api/*` Bypass, a phone's Custom Tab hitting
+`/api/devices/code` with no Access session gets no login page from the
+edge. The worker 302s it to `/enroll` (not under `/api`, so the
+`ccez-keeps` Allow app gates it and shows the login), and `/enroll` 302s
+back to the code route once the session cookie exists. Keep `/enroll`
+under the Allow app; if it is ever Bypassed, phone sign-in breaks.

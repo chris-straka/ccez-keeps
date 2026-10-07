@@ -69,7 +69,10 @@ all enrolled phones.
   single-use enrollment code (10-minute TTL, hash stored only) and 302s to
   the `to` callback with `?code=<raw>` appended. 400 unless `to` starts
   with `keeps://`. Exists because a Custom Tab cannot hand the Access JWT
-  to the app (httpOnly browser cookie).
+  to the app (httpOnly browser cookie). Without an Access session (a
+  fresh browser: `/api/*` is Bypassed at the edge) it 302s to
+  `/enroll?to=...` instead, an Access-gated path that logs the browser in
+  and 302s back here with `&retry=1`; the retry leg 401s rather than loop.
 - `POST /api/devices/exchange {code, deviceName?}` — NO auth (the unused,
   unexpired code is the credential). Response: `{deviceId, token}` like
   enroll. 404 on unknown/used codes, 410 on expired ones.

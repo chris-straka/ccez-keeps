@@ -9,6 +9,7 @@ android/.gradle/
 android/build/
 android/app/build/
 android/synclogic/build/
+android/.kotlin/
 local.properties
 *.apk
 *.aab

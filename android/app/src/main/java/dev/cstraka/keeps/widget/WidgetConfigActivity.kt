@@ -66,7 +66,7 @@ class WidgetConfigActivity : ComponentActivity() {
                 )
         }
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            MaterialTheme(colorScheme = dev.cstraka.keeps.ui.keepsColorScheme(true)) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ConfigList(
                         notes = notes,

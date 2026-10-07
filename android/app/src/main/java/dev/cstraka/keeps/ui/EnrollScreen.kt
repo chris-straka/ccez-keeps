@@ -35,7 +35,7 @@ fun EnrollScreen(
     theme: ThemeMode = ThemeMode.DARK,
 ) {
     val haptics = LocalHapticFeedback.current
-    MaterialTheme(colorScheme = if (themeDark(theme)) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(colorScheme = keepsColorScheme(themeDark(theme))) {
         // Surface sets the content color (white text on dark); without it
         // plain Text() falls back to black-on-dark and is unreadable.
         Surface(modifier = Modifier.fillMaxSize()) {

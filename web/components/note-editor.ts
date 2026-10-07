@@ -64,6 +64,7 @@ export class NoteEditor extends HTMLElement {
   private cursor = -1;
   /** Checklist rows while the dialog is open; null = plain text mode. */
   private items: ChecklistItem[] | null = null;
+  private bodyPlaceholder = "Take a note...";
   /** Attachments staged for save (start from the opened note's). */
   private staged: Attachment[] = [];
   private editorError = "";
@@ -191,8 +192,11 @@ export class NoteEditor extends HTMLElement {
   open(
     draft: NoteDraft | null,
     labels: LabelOption[] = [],
-    opts?: { focusReminder?: boolean },
+    opts?: { focusReminder?: boolean; idea?: boolean },
   ): void {
+    // Idea mode (the Idea button): the body is focused with the phone
+    // keyboard up, so the keyboard's mic dictates straight into it.
+    this.bodyPlaceholder = opts?.idea ? "Say or type the idea…" : "Take a note...";
     const source = draft ?? { title: "", body: "", color: "default" };
     const selected = new Set(source.labelIds ?? []);
     this.history = [];
@@ -260,6 +264,8 @@ export class NoteEditor extends HTMLElement {
     this.push();
     if (opts?.focusReminder) {
       this.querySelector<HTMLInputElement>(".editor-reminder")?.focus();
+    } else if (opts?.idea) {
+      this.querySelector<HTMLTextAreaElement>(".editor-body")?.focus();
     } else {
       this.querySelector<HTMLInputElement>(".editor-title")?.focus();
     }
@@ -361,7 +367,7 @@ export class NoteEditor extends HTMLElement {
     const region = this.querySelector(".editor-body-region");
     if (!region) return;
     if (this.items === null) {
-      region.innerHTML = `<textarea class="editor-body" placeholder="Take a note...">${escapeHtml(fallbackBody)}</textarea>`;
+      region.innerHTML = `<textarea class="editor-body" placeholder="${escapeHtml(this.bodyPlaceholder)}" autocapitalize="sentences" spellcheck="true">${escapeHtml(fallbackBody)}</textarea>`;
       const body = region.querySelector<HTMLTextAreaElement>(".editor-body");
       // Size after layout: the dialog is only measurable once attached.
       if (body) globalThis.requestAnimationFrame?.(() => fitBody(body));

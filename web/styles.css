@@ -71,6 +71,15 @@ keeps-app {
   width: 100%;
 }
 
+.idea-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 600;
+  padding: 9px 14px;
+}
+
 .new-note {
   white-space: nowrap;
   border-color: var(--accent);

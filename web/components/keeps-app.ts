@@ -13,7 +13,7 @@ import { parseReminderInput } from "./note-editor.js";
 import type { DrawingDraft } from "./drawing-dialog.js";
 import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
-import type { Label } from "../../shared/label.js";
+import { IDEAS_LABEL_NAME, isIdeasLabelName, type Label } from "../../shared/label.js";
 
 /** Minimal sync surface the shell needs (satisfied by SyncEngine). */
 export interface SyncPort {
@@ -40,6 +40,9 @@ const ICONS: Record<NoteView, string> = {
 
 export const TAG_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 2.5h4l7 7-4 4-7-7z"/><circle cx="6" cy="6" r="1"/></svg>';
+
+const IDEA_ICON =
+  '<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 1.8a4.2 4.2 0 0 0-2.5 7.6c.5.4.8 1 .8 1.6v.5h3.4V11c0-.6.3-1.2.8-1.6A4.2 4.2 0 0 0 8 1.8z"/><line x1="6.3" y1="13.2" x2="9.7" y2="13.2"/><line x1="6.9" y1="14.8" x2="9.1" y2="14.8"/></svg>';
 
 const NAV_ICON =
   '<svg viewBox="0 0 16 16" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg>';
@@ -80,6 +83,8 @@ export class KeepsApp extends HTMLElement {
   private query = "";
   private editingId: string | null = null;
   private composerOpen = false;
+  /** The open editor came from the Idea button (kept across re-renders). */
+  private ideaEditor = false;
   private navOpen = false;
   private masonry: ResizeObserver | undefined;
   private unsub: (() => void) | undefined;
@@ -581,9 +586,11 @@ export class KeepsApp extends HTMLElement {
     if (stash.editor) {
       (
         this.querySelector("note-editor") as unknown as {
-          open: (draft: NoteDraft, labels?: LabelOption[]) => void;
+          open: (draft: NoteDraft, labels?: LabelOption[], opts?: { idea?: boolean }) => void;
         }
-      ).open(stash.editor, this.labelOptions());
+        // An idea stays an idea across a background re-render (creating
+        // the Ideas label itself triggers one): placeholder, body focus.
+      ).open(stash.editor, this.labelOptions(), this.ideaEditor ? { idea: true } : undefined);
     }
     if (stash.composer && this.composerOpen) {
       const title = this.querySelector<HTMLInputElement>(".composer-title");
@@ -602,6 +609,7 @@ export class KeepsApp extends HTMLElement {
           <input class="search" placeholder="Search notes  ( / )" aria-label="Search notes" value="${escapeHtml(this.query)}" />
         </div>
         ${this.isBucketView() ? `<button class="layout-toggle" data-layout-toggle aria-label="${this.listMode ? "Grid view" : "List view"}" title="${this.listMode ? "Grid view" : "List view"}">${this.listMode ? GRID_ICON : LIST_ICON}</button>` : ""}
+        <button class="idea-note" data-idea aria-label="New idea" title="New idea (I)">${IDEA_ICON}<span>Idea</span></button>
         <button class="new-note" data-new="open">${this.view === "reminders" ? "+ New reminder" : "+ New"}</button>
       </header>
       <div class="layout${this.navOpen ? " nav-open" : ""}">
@@ -918,18 +926,37 @@ export class KeepsApp extends HTMLElement {
     for (const child of grid.children) this.masonry.observe(child);
   }
 
+  /**
+   * One tap to an idea: a new note already carrying the Ideas label (an
+   * existing one under any spelling, else created), body focused for
+   * dictation. Closing an empty idea saves nothing, like any new note.
+   */
+  openIdea(): void {
+    const labels = this.requireLabels();
+    const ideas =
+      labels.all().find((l) => isIdeasLabelName(l.name)) ?? labels.create(IDEAS_LABEL_NAME);
+    this.labelCache = labels.all();
+    buzz("tap");
+    this.openEditor(
+      null,
+      { title: "", body: "", color: "default", labelIds: [ideas.id] },
+      { idea: true },
+    );
+  }
+
   private openEditor(
     id: string | null,
     draft: NoteDraft,
-    opts?: { focusReminder?: boolean },
+    opts?: { focusReminder?: boolean; idea?: boolean },
   ): void {
     this.editingId = id;
+    this.ideaEditor = opts?.idea === true;
     (
       this.querySelector("note-editor") as unknown as {
         open: (
           draft: NoteDraft,
           labels?: LabelOption[],
-          opts?: { focusReminder?: boolean },
+          opts?: { focusReminder?: boolean; idea?: boolean },
         ) => void;
       }
     ).open(draft, this.labelOptions(), opts);
@@ -1016,6 +1043,10 @@ export class KeepsApp extends HTMLElement {
       // the composer draft, and search focus. renderShell() still stamps
       // the persisted navOpen on full re-renders.
       this.toggleNav();
+      return;
+    }
+    if (target.closest("[data-idea]")) {
+      this.openIdea();
       return;
     }
     const newBtn = target.closest("[data-new]");

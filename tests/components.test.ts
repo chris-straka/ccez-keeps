@@ -1312,6 +1312,45 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     return { store, labels, app, ready, tick, cards, cleanup };
   }
 
+  test("Idea button: one tap opens a note already labelled Ideas, body focused", async () => {
+    window.localStorage.removeItem("keeps-labels");
+    const t = await mountWithLabels([], [{ id: "l1", name: "Errands" }]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>("[data-idea]")!.click();
+    await t.tick();
+    const ideas = t.labels.all().find((l) => l.name === "Ideas");
+    expect(ideas).toBeDefined();
+    const checked = [...t.app.querySelectorAll<HTMLInputElement>(".label-check")]
+      .filter((c) => c.checked)
+      .map((c) => c.value);
+    expect(checked).toEqual([ideas!.id]);
+    const body = t.app.querySelector<HTMLTextAreaElement>(".editor-body")!;
+    expect(document.activeElement).toBe(body);
+    expect(body.placeholder).toBe("Say or type the idea…");
+    body.value = "video: why rents rose faster than wages";
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    const all = await t.store.all();
+    expect(all).toHaveLength(1);
+    expect(all[0]?.labelIds).toEqual([ideas!.id]);
+    t.cleanup();
+  });
+
+  test("Idea button reuses a hand-made ideas label and saves nothing when empty", async () => {
+    window.localStorage.removeItem("keeps-labels");
+    const t = await mountWithLabels([], [{ id: "mine", name: "idea" }]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>("[data-idea]")!.click();
+    await t.tick();
+    expect(t.labels.all().filter((l) => /^ideas?$/i.test(l.name)).map((l) => l.id)).toEqual([
+      "mine",
+    ]);
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    expect(await t.store.all()).toHaveLength(0);
+    t.cleanup();
+  });
+
   test("label chips render on cards with label names", async () => {
     const t = await mountWithLabels(
       [note({ id: "1", title: "Shop", labelIds: ["l1"] })],

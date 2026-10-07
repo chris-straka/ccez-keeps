@@ -41,9 +41,18 @@ async function main(): Promise<void> {
   // Labels converge in the background like notes (flush: re-push anything
   // persisted-but-unsent, then pull); failures stay silent (the sidebar
   // renders from cache and every label write retries).
-  void labels.flush().catch((error: unknown) => {
+  const labelsReady = labels.flush().catch((error: unknown) => {
     console.error("[keeps] labels boot sync failed:", error);
   });
+  // Home-screen "Idea" shortcut (manifest shortcuts): /?idea opens an idea
+  // once the labels pulled, so it reuses the existing Ideas label.
+  const params = new URLSearchParams(location.search);
+  if (params.has("idea")) {
+    history.replaceState(null, "", location.pathname);
+    void Promise.race([labelsReady, new Promise((r) => setTimeout(r, 1500))]).then(() =>
+      app.openIdea(),
+    );
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -56,6 +65,9 @@ async function main(): Promise<void> {
     } else if ((event.key === "m" || event.key === "M") && !typing) {
       event.preventDefault();
       app.toggleNav();
+    } else if ((event.key === "i" || event.key === "I") && !typing) {
+      event.preventDefault();
+      app.openIdea();
     }
   });
 

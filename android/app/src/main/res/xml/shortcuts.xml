@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the Keeps icon: "Idea" says or types a note labelled Ideas. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="idea"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_idea"
+        android:shortcutShortLabel="@string/shortcut_idea_short"
+        android:shortcutLongLabel="@string/shortcut_idea_long">
+        <intent
+            android:action="dev.cstraka.keeps.action.IDEA"
+            android:targetPackage="dev.cstraka.keeps"
+            android:targetClass="dev.cstraka.keeps.MainActivity" />
+    </shortcut>
+</shortcuts>

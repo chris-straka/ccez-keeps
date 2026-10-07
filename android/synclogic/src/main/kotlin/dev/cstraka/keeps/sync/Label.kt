@@ -94,3 +94,14 @@ fun applyLabelRename(label: Label, name: String, now: Long): Label? {
  */
 fun applyLabelDelete(label: Label, now: Long): Label =
     label.copy(deleted = true, updatedAt = now)
+
+/** Name the Idea button gives its label (same as web's IDEAS_LABEL_NAME). */
+const val IDEAS_LABEL_NAME = "Ideas"
+
+/**
+ * True for the owner's ideas label however it was made: "Ideas" from the
+ * Idea button or one typed by hand ("ideas", "Idea"). Same rule as web's
+ * shared/label.ts isIdeasLabelName and the worker's ideas feed.
+ */
+fun isIdeasLabelName(name: String): Boolean =
+    Regex("^ideas?$", RegexOption.IGNORE_CASE).matches(name.trim())

@@ -6,4 +6,7 @@
     <string name="widget_list_label">Keeps Notes</string>
     <string name="widget_list_desc">Your newest Keeps notes; tap one to open it.</string>
     <string name="widget_list_empty">No notes yet.</string>
+    <string name="widget_idea">Idea</string>
+    <string name="shortcut_idea_short">Idea</string>
+    <string name="shortcut_idea_long">New idea (voice)</string>
 </resources>

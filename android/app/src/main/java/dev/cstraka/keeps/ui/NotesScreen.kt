@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.TipsAndUpdates
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
@@ -240,6 +241,10 @@ fun NotesScreen(
     onCreate: (String, String, List<String>, Long?, String?, List<ChecklistItem>?, List<Attachment>) -> Unit,
     composerOpen: Boolean = false,
     onComposerOpen: (Boolean) -> Unit = {},
+    /** Ideas label id while the composer is an idea (typed fallback). */
+    ideaLabelId: String? = null,
+    /** Idea button: voice first, typed composer as the fallback. */
+    onIdea: () -> Unit = {},
     onOpenEditor: (Note?) -> Unit,
     onCloseEditor: () -> Unit,
     onSave: (Note, String, String, String, List<ChecklistItem>?, List<Attachment>) -> Unit,
@@ -418,6 +423,12 @@ fun NotesScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onIdea()
+                            }) {
+                                Icon(Icons.Filled.TipsAndUpdates, contentDescription = "New idea")
+                            }
                             Text(
                                 syncLabel(state.syncStatus),
                                 style = MaterialTheme.typography.labelSmall,
@@ -581,11 +592,12 @@ fun NotesScreen(
 
         if (composerOpen) {
             NoteDialog(
-                title = "Take a note…",
+                title = if (ideaLabelId != null) "New idea" else "Take a note…",
                 initialTitle = "",
                 initialBody = "",
                 initialColor = "default",
                 dark = dark,
+                initialLabelIds = listOfNotNull(ideaLabelId),
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 startWithReminderPicker = state.filter == NoteFilter.REMINDERS,

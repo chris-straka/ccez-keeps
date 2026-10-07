@@ -25,6 +25,7 @@ class QuickCaptureWidget : AppWidgetProvider() {
 
     companion object {
         const val ACTION_COMPOSE = "dev.cstraka.keeps.action.COMPOSE"
+        private const val IDEA_REQUEST_OFFSET = 1_000_000
 
         fun updateOne(context: Context, appWidgetId: Int) {
             val manager = AppWidgetManager.getInstance(context)
@@ -39,6 +40,13 @@ class QuickCaptureWidget : AppWidgetProvider() {
             )
             val views = RemoteViews(context.packageName, R.layout.widget_quick_capture)
             views.setOnClickPendingIntent(R.id.widget_new_note, pending)
+            // Request code offset keeps the two PendingIntents distinct.
+            val idea = PendingIntent.getActivity(
+                context, appWidgetId + IDEA_REQUEST_OFFSET,
+                Intent(context, MainActivity::class.java).setAction(MainActivity.ACTION_IDEA),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            views.setOnClickPendingIntent(R.id.widget_idea, idea)
             manager.updateAppWidget(appWidgetId, views)
         }
     }

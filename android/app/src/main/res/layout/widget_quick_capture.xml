@@ -3,12 +3,22 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:padding="8dp">
 
     <Button
         android:id="@+id/widget_new_note"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:text="@string/widget_new_note" />
+
+    <!-- One tap: say an idea; it is saved labelled Ideas. -->
+    <Button
+        android:id="@+id/widget_idea"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_weight="1"
+        android:text="@string/widget_idea" />
 </LinearLayout>

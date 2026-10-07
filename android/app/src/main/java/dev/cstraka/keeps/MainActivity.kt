@@ -3,6 +3,9 @@ package dev.cstraka.keeps
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -42,6 +45,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Idea capture, voice first: the system speech recognizer's text is
+     * saved at once as a note labelled Ideas. Cancelled or no recognizer
+     * on the phone: the composer opens pre-labelled for typing.
+     */
+    private val recognizeIdea = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val text = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+            .orEmpty()
+        if (result.resultCode == RESULT_OK && text.isNotEmpty()) {
+            notesModel.saveIdea(text) {
+                Toast.makeText(this, "Idea saved", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            notesModel.openIdeaComposer()
+        }
+    }
+
+    private fun captureIdea() {
+        if (!app.authStore.isEnrolled) return
+        val speech = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Say the idea")
+        if (speech.resolveActivity(packageManager) != null) {
+            try {
+                recognizeIdea.launch(speech)
+                return
+            } catch (e: android.content.ActivityNotFoundException) {
+                // Fall through to typing.
+            }
+        }
+        notesModel.openIdeaComposer()
+    }
+
     /** Flipped once enrollment completes so the UI swaps without relaunch. */
     private var enrolledVersion = mutableStateOf(0)
 
@@ -78,6 +119,8 @@ class MainActivity : ComponentActivity() {
                     onCreate = notesModel::create,
                     composerOpen = composerOpen,
                     onComposerOpen = notesModel::setComposer,
+                    ideaLabelId = notesModel.ideaLabelId.collectAsState().value,
+                    onIdea = { captureIdea() },
                     onOpenEditor = notesModel::openEditor,
                     onCloseEditor = notesModel::closeEditor,
                     onSave = notesModel::save,
@@ -150,6 +193,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleComposeExtra(intent: Intent?) {
+        // Launcher shortcut / widget "Idea" button.
+        if (intent?.action == ACTION_IDEA) {
+            intent.action = null
+            captureIdea()
+            return
+        }
         if (intent?.getBooleanExtra(EXTRA_COMPOSE, false) == true) {
             intent.removeExtra(EXTRA_COMPOSE)
             // Widget with a configured note opens it; otherwise a composer.
@@ -173,6 +222,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_COMPOSE = "dev.cstraka.keeps.EXTRA_COMPOSE"
         const val EXTRA_NOTE_ID = "dev.cstraka.keeps.EXTRA_NOTE_ID"
+        /** Launcher shortcut + widget: capture an idea (voice first). */
+        const val ACTION_IDEA = "dev.cstraka.keeps.action.IDEA"
 
         /** Update entry point shown in Settings (always the newest release). */
         const val LATEST_RELEASE_URL =

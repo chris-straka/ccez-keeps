@@ -1,5 +1,7 @@
 package dev.cstraka.keeps.ui
 
+import dev.cstraka.keeps.sync.IDEAS_LABEL_NAME
+import dev.cstraka.keeps.sync.isIdeasLabelName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.cstraka.keeps.auth.AuthStore
@@ -144,6 +146,31 @@ class NotesViewModel(
     /** Widget + notification taps open a blank composer through here. */
     fun setComposer(open: Boolean) {
         _composerOpen.value = open
+        if (!open) _ideaLabelId.value = null
+    }
+
+    /** Set while the composer is an idea (its Ideas label preselected). */
+    private val _ideaLabelId = MutableStateFlow<String?>(null)
+    val ideaLabelId: StateFlow<String?> = _ideaLabelId
+
+    /** The existing ideas label under any spelling, else a new "Ideas". */
+    private suspend fun ideasLabel(): Label =
+        store.allLabels().firstOrNull { !it.deleted && isIdeasLabelName(it.name) }
+            ?: store.createLabel(IDEAS_LABEL_NAME).also { touch() }
+
+    /** Dictated idea: saved straight away as a note labelled Ideas. */
+    fun saveIdea(text: String, onSaved: () -> Unit = {}) = viewModelScope.launch {
+        val clean = text.trim().take(100_000)
+        if (clean.isEmpty()) return@launch
+        store.create("", clean, listOf(ideasLabel().id), null, null, null, emptyList())
+        touch()
+        onSaved()
+    }
+
+    /** Typed idea (no recognizer, or voice cancelled): composer pre-labelled. */
+    fun openIdeaComposer() = viewModelScope.launch {
+        _ideaLabelId.value = ideasLabel().id
+        _composerOpen.value = true
     }
 
     /**

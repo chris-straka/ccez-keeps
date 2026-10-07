@@ -53,6 +53,12 @@ interface Snapshot {
 
 const HISTORY_LIMIT = 100;
 
+/** Grow the body to its content like Keep (CSS max-height caps it). */
+function fitBody(el: HTMLTextAreaElement): void {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + 2}px`;
+}
+
 export class NoteEditor extends HTMLElement {
   private history: Snapshot[] = [];
   private cursor = -1;
@@ -134,6 +140,7 @@ export class NoteEditor extends HTMLElement {
         target.classList.contains("editor-title") ||
         target.classList.contains("editor-body")
       ) {
+        if (target.classList.contains("editor-body")) fitBody(target as HTMLTextAreaElement);
         this.push();
       }
       if (target.classList.contains("check-text")) {
@@ -355,6 +362,9 @@ export class NoteEditor extends HTMLElement {
     if (!region) return;
     if (this.items === null) {
       region.innerHTML = `<textarea class="editor-body" placeholder="Take a note...">${escapeHtml(fallbackBody)}</textarea>`;
+      const body = region.querySelector<HTMLTextAreaElement>(".editor-body");
+      // Size after layout: the dialog is only measurable once attached.
+      if (body) globalThis.requestAnimationFrame?.(() => fitBody(body));
       return;
     }
     region.innerHTML = `

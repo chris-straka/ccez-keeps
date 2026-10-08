@@ -20,7 +20,9 @@ Single user, no collaboration.
 
 The **Idea** button (web top bar, `I`, home-screen shortcut; Android top bar,
 launcher long-press, widget; voice first on Android) saves a note labelled
-Ideas in one tap. mediaforge reads those notes daily through the read-only
+Ideas in one tap. Ideas have their own tab (Android: Notes | Ideas under the
+search bar; web: Ideas in the sidebar) and stay out of the Notes grid; a
+drawer label filter still shows them. mediaforge reads those notes daily through the read-only
 `GET /api/ideas` feed (contracts/api.md, docs/access.md).
 
 ## Map

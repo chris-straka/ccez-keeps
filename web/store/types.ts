@@ -6,6 +6,9 @@ import type { Note } from "../../shared/note.js";
 
 export type NoteView =
   | "notes"
+  // Live notes like "notes"; the app keeps only those labelled Ideas here
+  // and leaves them out of "notes" (the store doesn't know labels).
+  | "ideas"
   | "archive"
   | "trash"
   | "reminders"

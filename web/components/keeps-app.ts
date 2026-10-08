@@ -24,6 +24,8 @@ export interface SyncPort {
 const ICONS: Record<NoteView, string> = {
   notes:
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="1.5" width="10" height="13" rx="1.5"/><line x1="5.5" y1="5.5" x2="10.5" y2="5.5"/><line x1="5.5" y1="8.5" x2="10.5" y2="8.5"/><line x1="5.5" y1="11.5" x2="8.5" y2="11.5"/></svg>',
+  ideas:
+    '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 1.8a4.2 4.2 0 0 0-2.5 7.6c.5.4.8 1 .8 1.6v.5h3.4V11c0-.6.3-1.2.8-1.6A4.2 4.2 0 0 0 8 1.8z"/><line x1="6.3" y1="13.2" x2="9.7" y2="13.2"/><line x1="6.9" y1="14.8" x2="9.1" y2="14.8"/></svg>',
   archive:
     '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1"/><line x1="1.5" y1="6" x2="14.5" y2="6"/><line x1="6.5" y1="9" x2="9.5" y2="9"/></svg>',
   trash:
@@ -55,6 +57,7 @@ const GRID_ICON =
 
 const VIEWS: { id: NoteView; label: string }[] = [
   { id: "notes", label: "Notes" },
+  { id: "ideas", label: "Ideas" },
   { id: "reminders", label: "Reminders" },
   { id: "archive", label: "Archive" },
   { id: "trash", label: "Trash" },
@@ -229,6 +232,7 @@ export class KeepsApp extends HTMLElement {
     const id = hash.replace(/^#\/?/, "").split("?")[0] ?? "";
     const known: NoteView[] = [
       "notes",
+      "ideas",
       "reminders",
       "archive",
       "trash",
@@ -331,6 +335,20 @@ export class KeepsApp extends HTMLElement {
   private applyLabelFilter(notes: Note[]): Note[] {
     if (!this.activeLabelId) return notes;
     return notes.filter((n) => (n.labelIds ?? []).includes(this.activeLabelId as string));
+  }
+
+  /**
+   * Ideas get their own view: Ideas keeps notes with an ideas label, and
+   * Notes leaves them out (unless a label filter is picking explicitly).
+   */
+  private applyIdeasSplit(notes: Note[]): Note[] {
+    if (this.view !== "notes" && this.view !== "ideas") return notes;
+    if (this.view === "notes" && this.activeLabelId) return notes;
+    const ideasIds = new Set(
+      this.labelCache.filter((l) => isIdeasLabelName(l.name)).map((l) => l.id),
+    );
+    const isIdea = (n: Note): boolean => (n.labelIds ?? []).some((id) => ideasIds.has(id));
+    return notes.filter((n) => (this.view === "ideas" ? isIdea(n) : !isIdea(n)));
   }
 
   setSyncStatus(status: SyncStatus): void {
@@ -520,7 +538,7 @@ export class KeepsApp extends HTMLElement {
     const found = this.query
       ? await store.search(this.query, this.view, this.labelNameMap())
       : await store.list(this.view);
-    const notes = this.applyLabelFilter(found);
+    const notes = this.applyIdeasSplit(this.applyLabelFilter(found));
     const counts: Record<string, number> = {};
     for (const n of await store.all()) {
       if (n.deleted) continue;
@@ -637,6 +655,7 @@ export class KeepsApp extends HTMLElement {
   private isBucketView(): boolean {
     return (
       this.view === "notes" ||
+      this.view === "ideas" ||
       this.view === "reminders" ||
       this.view === "archive" ||
       this.view === "trash"
@@ -897,7 +916,9 @@ export class KeepsApp extends HTMLElement {
           ? "Trash is empty"
           : this.view === "reminders"
             ? "No upcoming reminders"
-            : "No notes yet";
+            : this.view === "ideas"
+              ? "No ideas yet"
+              : "No notes yet";
       grid.appendChild(empty);
     }
     this.layoutMasonry(grid as HTMLElement);
@@ -1050,6 +1071,10 @@ export class KeepsApp extends HTMLElement {
       return;
     }
     const newBtn = target.closest("[data-new]");
+    if (newBtn && this.view === "ideas") {
+      this.openIdea();
+      return;
+    }
     if (newBtn) {
       // From the agenda the new note is a reminder: land on its time field.
       this.openEditor(
@@ -1427,6 +1452,12 @@ export class KeepsApp extends HTMLElement {
       await store.put(
         newNote({ id: crypto.randomUUID(), ...draft, ...extras, order: await store.topOrder() }),
       );
+      // A new idea lands where it now lives (Notes no longer shows it).
+      if (this.ideaEditor && this.view === "notes" && !this.activeLabelId) {
+        this.view = "ideas";
+        this.setHash("ideas");
+        void this.refresh();
+      }
     }
     buzz("confirm");
     this.sync?.schedulePush();

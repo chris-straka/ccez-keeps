@@ -1351,6 +1351,50 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
+  test("Ideas have their own view and stay out of Notes", async () => {
+    window.localStorage.removeItem("keeps-labels");
+    const t = await mountWithLabels(
+      [
+        note({ id: "1", title: "Groceries" }),
+        note({ id: "2", title: "Rent vs wages video", labelIds: ["i1"] }),
+      ],
+      [{ id: "i1", name: "Ideas" }],
+    );
+    await t.ready;
+    await t.tick();
+    const titles = () => t.cards().map((c) => (c as unknown as { note: { title: string } }).note.title);
+    expect(titles()).toEqual(["Groceries"]);
+    t.app.querySelector<HTMLButtonElement>('[data-view="ideas"]')!.click();
+    await t.tick();
+    expect(titles()).toEqual(["Rent vs wages video"]);
+    // The drawer's label filter still finds ideas from Notes.
+    t.app.querySelector<HTMLButtonElement>('[data-view="notes"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-label-filter="i1"]')!.click();
+    await t.tick();
+    expect(titles()).toEqual(["Rent vs wages video"]);
+    t.cleanup();
+  });
+
+  test("a new idea saved from Notes lands on the Ideas view", async () => {
+    window.localStorage.removeItem("keeps-labels");
+    const t = await mountWithLabels([], []);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>("[data-idea]")!.click();
+    await t.tick();
+    t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value = "a game about tides";
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    await t.tick();
+    expect(
+      t.app.querySelector('[data-view="ideas"]')?.getAttribute("aria-current"),
+    ).toBe("page");
+    expect(t.cards()).toHaveLength(1);
+    t.cleanup();
+  });
+
   test("label chips render on cards with label names", async () => {
     const t = await mountWithLabels(
       [note({ id: "1", title: "Shop", labelIds: ["l1"] })],

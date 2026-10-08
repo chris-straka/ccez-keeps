@@ -50,3 +50,14 @@ edge. The worker 302s it to `/enroll` (not under `/api`, so the
 `ccez-keeps` Allow app gates it and shows the login), and `/enroll` 302s
 back to the code route once the session cookie exists. Keep `/enroll`
 under the Allow app; if it is ever Bypassed, phone sign-in breaks.
+
+## Ideas feed token (`/api/ideas`)
+
+`GET /api/ideas` (mediaforge's daily intake) sits under the same `/api/*`
+Bypass but accepts only its own bearer token, checked against the Worker
+secret `IDEAS_READER_SHA256` (`worker/ideas.ts`). Neither an Access session
+nor a device token opens it, and its token opens no other route. The raw
+token lives only on the intake host (`~/.config/mediaforge/keeps-ideas.token`);
+`deploy.yml` sets the hash from the GitHub secret of the same name. To
+rotate: write a new token there, `gh secret set IDEAS_READER_SHA256` with its
+SHA-256, and redeploy. Unset secret = the feed answers 503.

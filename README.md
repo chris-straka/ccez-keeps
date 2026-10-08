@@ -16,6 +16,13 @@ Single user, no collaboration.
 | Deploy | `wrangler deploy` (Worker + static assets, one unit) |
 | Auth | Cloudflare Access Allow (exact email), plus Worker JWT check |
 
+## Ideas
+
+The **Idea** button (web top bar, `I`, home-screen shortcut; Android top bar,
+launcher long-press, widget; voice first on Android) saves a note labelled
+Ideas in one tap. mediaforge reads those notes daily through the read-only
+`GET /api/ideas` feed (contracts/api.md, docs/access.md).
+
 ## Map
 
 - `shared/` — frozen data contract: `Note`, validators, LWW merge

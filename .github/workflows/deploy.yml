@@ -34,6 +34,11 @@ jobs:
   deploy:
     needs: [test-web]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # One deploy at a time: two overlapping runs race the secret step
+    # ("latest version of your Worker isn't currently deployed").
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

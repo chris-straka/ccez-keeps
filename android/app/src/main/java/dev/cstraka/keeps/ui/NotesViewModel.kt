@@ -1,6 +1,8 @@
 package dev.cstraka.keeps.ui
 
 import dev.cstraka.keeps.sync.IDEAS_LABEL_NAME
+import dev.cstraka.keeps.sync.ideasLabelIds
+import dev.cstraka.keeps.sync.isIdeaNote
 import dev.cstraka.keeps.sync.isIdeasLabelName
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -42,7 +44,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class NoteFilter { NOTES, REMINDERS, ARCHIVE, TRASH }
+/** IDEAS is the Notes tab's sibling: live notes labelled Ideas, kept out of NOTES. */
+enum class NoteFilter { NOTES, IDEAS, REMINDERS, ARCHIVE, TRASH }
 
 data class NotesUiState(
     val notes: List<Note> = emptyList(),
@@ -164,13 +167,21 @@ class NotesViewModel(
         if (clean.isEmpty()) return@launch
         store.create("", clean, listOf(ideasLabel().id), null, null, null, emptyList())
         touch()
+        showIdeas()
         onSaved()
     }
 
     /** Typed idea (no recognizer, or voice cancelled): composer pre-labelled. */
     fun openIdeaComposer() = viewModelScope.launch {
         _ideaLabelId.value = ideasLabel().id
+        showIdeas()
         _composerOpen.value = true
+    }
+
+    /** Land on the Ideas tab, where a just-captured idea shows up. */
+    private fun showIdeas() {
+        filter.value = NoteFilter.IDEAS
+        labelFilter.value = null
     }
 
     /**
@@ -214,9 +225,13 @@ class NotesViewModel(
         val liveLabels = bits.labels.filter { it.deleted.not() }
         val all = core.basics.rows.map { it.toNote() }
         val lf = bits.filter
+        val ideasIds = ideasLabelIds(liveLabels)
         val bucketed = all.filter { note ->
             val inBucket = when (core.basics.f) {
-                NoteFilter.NOTES -> !note.archived && !note.deleted
+                // A drawer label pick shows every live note with that label.
+                NoteFilter.NOTES -> !note.archived && !note.deleted &&
+                    (lf != null || !isIdeaNote(note, ideasIds))
+                NoteFilter.IDEAS -> !note.archived && !note.deleted && isIdeaNote(note, ideasIds)
                 NoteFilter.REMINDERS -> isAgendaNote(note)
                 NoteFilter.ARCHIVE -> note.archived && !note.deleted
                 NoteFilter.TRASH -> note.deleted

@@ -80,6 +80,8 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Surface
@@ -345,6 +347,7 @@ fun NotesScreen(
                         modifier = Modifier.padding(16.dp))
                     for ((label, f, icon) in listOf(
                         Triple("Notes", NoteFilter.NOTES, Icons.Filled.Lightbulb),
+                        Triple("Ideas", NoteFilter.IDEAS, Icons.Filled.TipsAndUpdates),
                         Triple("Reminders", NoteFilter.REMINDERS, Icons.Filled.Notifications),
                         Triple("Archive", NoteFilter.ARCHIVE, Icons.Filled.Archive),
                         Triple("Trash", NoteFilter.TRASH, Icons.Filled.Delete),
@@ -455,15 +458,21 @@ fun NotesScreen(
                 floatingActionButton = {
                     AnimatedVisibility(
                         visible = state.filter == NoteFilter.NOTES ||
+                            state.filter == NoteFilter.IDEAS ||
                             state.filter == NoteFilter.REMINDERS,
                         enter = fadeIn(tween(180)) + scaleIn(tween(180)),
                         exit = fadeOut(tween(150)) + scaleOut(tween(150)),
                     ) {
+                        // On the Ideas tab + captures an idea (voice first).
+                        val ideas = state.filter == NoteFilter.IDEAS
                         FloatingActionButton(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onComposerOpen(true)
+                            if (ideas) onIdea() else onComposerOpen(true)
                         }) {
-                            Icon(Icons.Filled.Add, contentDescription = "Take a note")
+                            Icon(
+                                if (ideas) Icons.Filled.TipsAndUpdates else Icons.Filled.Add,
+                                contentDescription = if (ideas) "New idea" else "Take a note",
+                            )
                         }
                     }
                 },
@@ -472,11 +481,36 @@ fun NotesScreen(
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = onQuery,
-                    placeholder = { Text("Search notes") },
+                    placeholder = {
+                        Text(if (state.filter == NoteFilter.IDEAS) "Search ideas" else "Search notes")
+                    },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 )
+                // Notes | Ideas: ideas get their own tab instead of mixing
+                // into the notes grid. Hidden on the other drawer views.
+                if (state.labelFilter == null &&
+                    (state.filter == NoteFilter.NOTES || state.filter == NoteFilter.IDEAS)
+                ) {
+                    val tabs = listOf(NoteFilter.NOTES to "Notes", NoteFilter.IDEAS to "Ideas")
+                    PrimaryTabRow(
+                        selectedTabIndex = tabs.indexOfFirst { it.first == state.filter },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        for ((f, name) in tabs) {
+                            Tab(
+                                selected = state.filter == f,
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    onFilter(f)
+                                },
+                                text = { Text(name) },
+                                modifier = Modifier.testTag("Tab-$name"),
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 if (needsLogin) {
                     Box(Modifier.fillMaxSize().padding(24.dp)) {
@@ -505,6 +539,7 @@ fun NotesScreen(
                                 Text(
                                     when (state.filter) {
                                         NoteFilter.NOTES -> "No notes yet — tap + to take one."
+                                        NoteFilter.IDEAS -> "No ideas yet — tap the bulb to say one."
                                         NoteFilter.REMINDERS -> "No upcoming reminders."
                                         NoteFilter.ARCHIVE -> "Nothing archived."
                                         NoteFilter.TRASH -> "Trash is empty."

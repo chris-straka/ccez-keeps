@@ -105,3 +105,11 @@ const val IDEAS_LABEL_NAME = "Ideas"
  */
 fun isIdeasLabelName(name: String): Boolean =
     Regex("^ideas?$", RegexOption.IGNORE_CASE).matches(name.trim())
+
+/** Ids of every live ideas label (a hand-made "idea" can sit beside "Ideas"). */
+fun ideasLabelIds(labels: List<Label>): Set<String> =
+    labels.filter { !it.deleted && isIdeasLabelName(it.name) }.map { it.id }.toSet()
+
+/** An idea is a note carrying an ideas label; it lives in the Ideas tab, not Notes. */
+fun isIdeaNote(note: Note, ideasIds: Set<String>): Boolean =
+    note.labelIds.any { it in ideasIds }

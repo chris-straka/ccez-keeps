@@ -3,6 +3,11 @@
 // Esc, or overlay click) emits `note-cancel`. <keeps-app> owns ids,
 // timestamps, and persistence.
 //
+// Layout follows Keep's editor: photos on top, borderless title and body,
+// chips for labels and the reminder, and one footer of icon tools with
+// Close/Save. Reminder, colour and labels open small panels above the
+// footer; the dialog takes the note's colour as it's picked.
+//
 // Toolbar: undo/redo walk a snapshot history of the two text fields
 // (native Ctrl/Cmd+Z still works too); the list button toggles a plain
 // "- [ ] "/ "- [x] " marker on the current body line. Markers stay plain
@@ -53,6 +58,32 @@ interface Snapshot {
 
 const HISTORY_LIMIT = 100;
 
+const svg = (body: string): string =>
+  `<svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+
+const TOOL_ICONS = {
+  remind: svg('<path d="M8 2a4 4 0 0 1 4 4c0 3 1 4 1 4H3s1-1 1-4a4 4 0 0 1 4-4z"/><path d="M6.5 12.5a1.5 1.5 0 0 0 3 0"/>'),
+  color: svg('<path d="M8 1.8a6.2 6.2 0 1 0 0 12.4c.9 0 1.4-.6 1.4-1.3 0-.9-.7-1.1-.7-1.9 0-.7.6-1.2 1.3-1.2h1.6a2.8 2.8 0 0 0 2.8-2.8C14.4 4.2 11.5 1.8 8 1.8z"/><circle cx="4.8" cy="7.2" r=".8" fill="currentColor"/><circle cx="7" cy="4.6" r=".8" fill="currentColor"/><circle cx="10.2" cy="4.8" r=".8" fill="currentColor"/>'),
+  photo: svg('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.5"/><circle cx="5.5" cy="6.3" r="1.1"/><path d="M2 11.5l3.6-3.4 2.6 2.4 2.2-2 3.6 3.2"/>'),
+  draw: svg('<path d="M10.8 2.6l2.6 2.6-7.6 7.6-3.3.7.7-3.3z"/><path d="M9.4 4l2.6 2.6"/>'),
+  checklist: svg('<rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8.2l2 2 4-4.4"/>'),
+  list: svg('<rect x="1.8" y="3" width="3.4" height="3.4" rx=".6"/><rect x="1.8" y="9.6" width="3.4" height="3.4" rx=".6"/><path d="M7.5 4.7h6.5M7.5 11.3h6.5"/>'),
+  labels: svg('<path d="M2.5 2.5h4.5l6.5 6.5-4.5 4.5-6.5-6.5z"/><circle cx="5.6" cy="5.6" r=".9"/>'),
+  undo: svg('<path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.8 6.5h6.7a3.5 3.5 0 0 1 0 7H7"/>'),
+  redo: svg('<path d="M10.5 3.5l3 3-3 3"/><path d="M13.2 6.5H6.5a3.5 3.5 0 0 0 0 7H9"/>'),
+};
+
+/** "Mon, Oct 20, 10:00" for the reminder chip. */
+function reminderLabel(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** Grow the body to its content like Keep (CSS max-height caps it). */
 function fitBody(el: HTMLTextAreaElement): void {
   el.style.height = "auto";
@@ -96,6 +127,22 @@ export class NoteEditor extends HTMLElement {
         case "save":
           this.close(true);
           break;
+        case "cancel":
+          this.close(false);
+          break;
+        case "panel":
+          this.togglePanel(action.dataset["panel"] ?? "");
+          break;
+        case "color":
+          this.pickColor(action.dataset["color"] ?? "default");
+          buzz("tap");
+          break;
+        case "clear-reminder": {
+          const input = this.querySelector<HTMLInputElement>(".editor-reminder");
+          if (input) input.value = "";
+          this.paintChips();
+          break;
+        }
         case "undo":
           this.step(-1);
           buzz("tap");
@@ -155,6 +202,14 @@ export class NoteEditor extends HTMLElement {
     });
     this.addEventListener("change", (event) => {
       const target = event.target as HTMLElement;
+      if (
+        target.classList.contains("label-check") ||
+        target.classList.contains("editor-reminder") ||
+        target.classList.contains("editor-repeat")
+      ) {
+        this.paintChips();
+        return;
+      }
       if (target.classList.contains("check-toggle")) {
         const id = (target as HTMLElement).dataset["checkId"] ?? "";
         const item = this.items?.find((i) => i.id === id);
@@ -216,14 +271,42 @@ export class NoteEditor extends HTMLElement {
         : source.checklist.map((i) => ({ ...i }));
     this.staged = (source.attachments ?? []).map((a) => ({ ...a }));
     this.editorError = "";
+    const color = (NOTE_COLORS as readonly string[]).includes(source.color) ? source.color : "default";
+    const tool = (action: string, label: string, icon: string, extra = ""): string =>
+      `<button type="button" class="tool" data-action="${action}" aria-label="${label}" title="${label}"${extra}>${icon}</button>`;
+    const panelTool = (panel: string, label: string, icon: string): string =>
+      tool("panel", label, icon, ` data-panel="${panel}" aria-expanded="false"`);
     this.innerHTML = `
-      <div class="editor-overlay" data-close>
-        <div class="editor" role="dialog" aria-modal="true">
-          <input class="editor-title" placeholder="Title" value="${escapeHtml(source.title)}" />
-          <div class="editor-body-region"></div>
+      <div class="editor-overlay note-overlay" data-close>
+        <div class="editor note-dialog" role="dialog" aria-modal="true" aria-label="${draft ? "Edit note" : "New note"}" data-color="${color}">
+          <div class="editor-scroll">
+            <div class="editor-attachments"></div>
+            <input class="editor-title" placeholder="Title" value="${escapeHtml(source.title)}" />
+            <div class="editor-body-region"></div>
+            <div class="editor-chips"></div>
+            <div class="editor-error" role="alert" hidden></div>
+          </div>
+          <div class="editor-panel editor-reminder-row" data-panel-body="remind" hidden>
+            <label>Remind me <input type="datetime-local" class="editor-reminder" value="${toReminderInput(source.reminderAt)}" /></label>
+            <label>Repeat
+              <select class="editor-repeat" aria-label="Repeat">
+                <option value=""${source.repeat ? "" : " selected"}>Never</option>
+                <option value="daily"${source.repeat === "daily" ? " selected" : ""}>Daily</option>
+                <option value="weekly"${source.repeat === "weekly" ? " selected" : ""}>Weekly</option>
+              </select>
+            </label>
+            <button type="button" class="link" data-action="clear-reminder">Clear</button>
+          </div>
+          <div class="editor-panel editor-palette" data-panel-body="color" role="radiogroup" aria-label="Color" hidden>
+            ${NOTE_COLORS.map(
+              (c) =>
+                `<button type="button" class="color-swatch" data-action="color" data-color="${c}" role="radio" aria-checked="${c === color}" aria-label="${c}" title="${c}"></button>`,
+            ).join("")}
+            <input type="hidden" class="editor-color" value="${color}" />
+          </div>
           ${
             labels.length > 0
-              ? `<div class="editor-labels" role="group" aria-label="Labels">
+              ? `<div class="editor-panel editor-labels" data-panel-body="labels" role="group" aria-label="Labels" hidden>
                   ${labels
                     .map(
                       (l) =>
@@ -233,51 +316,84 @@ export class NoteEditor extends HTMLElement {
                 </div>`
               : ""
           }
-          <div class="editor-attachments"></div>
-          <div class="editor-error" role="alert" hidden></div>
-          <div class="editor-reminder-row">
-            <label>Remind me <input type="datetime-local" class="editor-reminder" value="${toReminderInput(source.reminderAt)}" /></label>
-            <label>Repeat
-              <select class="editor-repeat" aria-label="Repeat">
-                <option value=""${source.repeat ? "" : " selected"}>Never</option>
-                <option value="daily"${source.repeat === "daily" ? " selected" : ""}>Daily</option>
-                <option value="weekly"${source.repeat === "weekly" ? " selected" : ""}>Weekly</option>
-              </select>
-            </label>
-          </div>
-          <div class="editor-tools" role="toolbar" aria-label="Edit tools">
-            <button data-action="undo" aria-label="Undo">Undo</button>
-            <button data-action="redo" aria-label="Redo">Redo</button>
-            <button data-action="bold" aria-label="Bold">B</button>
-            <button data-action="italic" aria-label="Italic">I</button>
-            <button data-action="list" aria-label="Toggle checklist">List</button>
-            <button data-action="checklist-mode" aria-label="Structured checklist">Checklist</button>
-            <button data-action="photo" aria-label="Attach photo">Photo</button>
-            <button data-action="draw" aria-label="Draw">Draw</button>
-            <input type="file" class="editor-file" accept="image/*" multiple hidden />
-          </div>
-          <div class="editor-row">
-            <select class="editor-color" aria-label="Color">
-              ${NOTE_COLORS.map(
-                (c) => `<option value="${c}"${c === source.color ? " selected" : ""}>${c}</option>`,
-              ).join("")}
-            </select>
-            <span class="editor-spacer"></span>
-            <button data-action="cancel">Close</button>
-            <button data-action="save">Save</button>
+          <div class="editor-foot">
+            <div class="editor-tools" role="toolbar" aria-label="Edit tools">
+              ${panelTool("remind", "Remind me", TOOL_ICONS.remind)}
+              ${panelTool("color", "Background colour", TOOL_ICONS.color)}
+              ${tool("photo", "Attach photo (or paste one)", TOOL_ICONS.photo)}
+              ${tool("draw", "Draw", TOOL_ICONS.draw)}
+              ${tool("checklist-mode", "Checklist", TOOL_ICONS.checklist)}
+              ${tool("list", "Toggle checkbox on this line", TOOL_ICONS.list)}
+              ${labels.length > 0 ? panelTool("labels", "Labels", TOOL_ICONS.labels) : ""}
+              ${tool("bold", "Bold", "<b>B</b>")}
+              ${tool("italic", "Italic", "<i>I</i>")}
+              ${tool("undo", "Undo", TOOL_ICONS.undo)}
+              ${tool("redo", "Redo", TOOL_ICONS.redo)}
+              <input type="file" class="editor-file" accept="image/*" multiple hidden />
+            </div>
+            <div class="editor-row">
+              <button type="button" data-action="cancel" title="Close without saving (Esc)">Close</button>
+              <button type="button" class="primary" data-action="save" title="Save (Ctrl/⌘ Enter)">Save</button>
+            </div>
           </div>
         </div>
       </div>`;
     this.paintBodyRegion(source.body);
     this.paintAttachments();
+    this.paintChips();
     this.push();
     if (opts?.focusReminder) {
+      this.togglePanel("remind", true);
       this.querySelector<HTMLInputElement>(".editor-reminder")?.focus();
     } else if (opts?.idea) {
       this.querySelector<HTMLTextAreaElement>(".editor-body")?.focus();
     } else {
       this.querySelector<HTMLInputElement>(".editor-title")?.focus();
     }
+  }
+
+  /** Show one footer panel (reminder, colour, labels); others close. */
+  private togglePanel(name: string, force?: boolean): void {
+    for (const panel of this.querySelectorAll<HTMLElement>("[data-panel-body]")) {
+      const open = panel.dataset["panelBody"] === name && (force ?? panel.hidden);
+      panel.hidden = !open;
+      this.querySelector(`.editor-tools [data-panel="${panel.dataset["panelBody"]}"]`)?.setAttribute(
+        "aria-expanded",
+        String(open),
+      );
+    }
+  }
+
+  private pickColor(color: string): void {
+    const input = this.querySelector<HTMLInputElement>(".editor-color");
+    if (input) input.value = color;
+    const dialog = this.querySelector<HTMLElement>(".editor");
+    if (dialog) dialog.dataset["color"] = color;
+    for (const swatch of this.querySelectorAll<HTMLElement>(".color-swatch")) {
+      swatch.setAttribute("aria-checked", String(swatch.dataset["color"] === color));
+    }
+  }
+
+  /** Label and reminder chips under the body; a click opens their panel. */
+  private paintChips(): void {
+    const zone = this.querySelector(".editor-chips");
+    if (!zone) return;
+    const chips: string[] = [];
+    const at = parseReminderInput(this.querySelector<HTMLInputElement>(".editor-reminder")?.value ?? "");
+    if (at !== null) {
+      const repeat = this.querySelector<HTMLSelectElement>(".editor-repeat")?.value;
+      chips.push(
+        `<button type="button" class="editor-chip" data-action="panel" data-panel="remind">${TOOL_ICONS.remind}<span>${escapeHtml(reminderLabel(at))}${repeat ? ` · ${escapeHtml(repeat)}` : ""}</span></button>`,
+      );
+    }
+    for (const box of this.querySelectorAll<HTMLInputElement>(".label-check")) {
+      if (!box.checked) continue;
+      const name = box.parentElement?.textContent?.trim() ?? "";
+      chips.push(
+        `<button type="button" class="editor-chip" data-action="panel" data-panel="labels">${escapeHtml(name)}</button>`,
+      );
+    }
+    zone.innerHTML = chips.join("");
   }
 
   private fields(): {
@@ -438,6 +554,7 @@ export class NoteEditor extends HTMLElement {
     this.push();
   }
 
+  /** Full images, not thumbs: the dialog shows them edge to edge. */
   private paintAttachments(): void {
     const zone = this.querySelector(".editor-attachments");
     if (!zone) return;
@@ -449,7 +566,7 @@ export class NoteEditor extends HTMLElement {
       .map(
         (a) => `
         <figure class="attach-thumb">
-          <img src="${escapeHtml(a.thumbUrl)}" alt="${escapeHtml(a.name)}" data-attach-view="${escapeHtml(a.id)}" />
+          <img src="${escapeHtml(a.dataUrl)}" alt="${escapeHtml(a.name)}" data-attach-view="${escapeHtml(a.id)}" />
           <button data-attach-del="${escapeHtml(a.id)}" aria-label="Remove ${escapeHtml(a.name)}">×</button>
         </figure>`,
       )

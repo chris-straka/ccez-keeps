@@ -1279,16 +1279,356 @@ input.check-text {
   font-size: 16px;
 }
 
-/* Undo/redo buttons are a mobile affordance; desktop uses Ctrl/⌘ Z. */
-@media (min-width: 768px) {
-  .editor-tools [data-action="undo"],
-  .editor-tools [data-action="redo"] {
-    display: none;
-  }
-}
 
 /* Full-width rows inside the card grid (not cards). */
 .grid > .trash-head,
 .grid > .empty {
   grid-column: 1 / -1;
+}
+
+/* Note editor dialog. Keep's editor is the reference: photos on top, a
+   borderless title and body, chips, then one footer of round icon tools
+   with Close/Save. The dialog wears the note's colour. */
+.note-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(88vh, 960px);
+  padding: 0;
+  gap: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  --tool-hover: rgba(255, 255, 255, 0.1);
+  --panel-bg: rgba(0, 0, 0, 0.2);
+  --chip-bg: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="light"] .note-dialog {
+  border-color: #dadce0;
+  box-shadow: 0 10px 32px rgba(60, 64, 67, 0.35);
+  --tool-hover: rgba(32, 33, 36, 0.08);
+  --panel-bg: rgba(32, 33, 36, 0.05);
+  --chip-bg: rgba(32, 33, 36, 0.08);
+}
+
+.note-dialog[data-color="red"] { background: #4a2c2a; }
+.note-dialog[data-color="orange"] { background: #4d3a1f; }
+.note-dialog[data-color="yellow"] { background: #4f4a1f; }
+.note-dialog[data-color="green"] { background: #2e4033; }
+.note-dialog[data-color="teal"] { background: #274843; }
+.note-dialog[data-color="blue"] { background: #2b3a4d; }
+.note-dialog[data-color="purple"] { background: #3c2f4d; }
+.note-dialog[data-color="pink"] { background: #4a2f3d; }
+html[data-theme="light"] .note-dialog[data-color="default"] { background: #ffffff; }
+html[data-theme="light"] .note-dialog[data-color="red"] { background: #f28b82; }
+html[data-theme="light"] .note-dialog[data-color="orange"] { background: #fbbc04; }
+html[data-theme="light"] .note-dialog[data-color="yellow"] { background: #fff475; }
+html[data-theme="light"] .note-dialog[data-color="green"] { background: #ccff90; }
+html[data-theme="light"] .note-dialog[data-color="teal"] { background: #a7ffeb; }
+html[data-theme="light"] .note-dialog[data-color="blue"] { background: #cbf0f8; }
+html[data-theme="light"] .note-dialog[data-color="purple"] { background: #d7aefb; }
+html[data-theme="light"] .note-dialog[data-color="pink"] { background: #fdcfe8; }
+
+.note-dialog .editor-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px 6px;
+}
+
+/* Photos run edge to edge across the top, like Keep. */
+.note-dialog .editor-attachments {
+  margin: -18px -20px 14px;
+  gap: 2px;
+}
+
+.note-dialog .attach-thumb {
+  flex: 1 1 180px;
+}
+
+.note-dialog .attach-thumb img {
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  border-radius: 0;
+}
+
+.note-dialog .attach-thumb button {
+  top: 8px;
+  right: 8px;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  opacity: 0;
+}
+
+.note-dialog .attach-thumb:hover button,
+.note-dialog .attach-thumb button:focus-visible {
+  opacity: 1;
+}
+
+.note-dialog .editor-title {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 2px 0;
+  margin: 0 0 8px;
+  max-height: none;
+}
+
+.note-dialog .editor-title::placeholder,
+.note-dialog .editor-body::placeholder {
+  color: var(--muted);
+}
+
+/* The body grows with its text; the dialog scrolls, not the textarea. */
+.note-dialog .editor-body {
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 120px;
+  max-height: none;
+  overflow: hidden;
+  padding: 0;
+}
+
+.note-dialog .editor-body-region {
+  margin: 0;
+}
+
+.note-dialog input.check-text {
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  font-size: 16px;
+}
+
+.note-dialog .editor-checklist [data-action="check-add"] {
+  align-self: flex-start;
+  border: none;
+  color: var(--muted);
+  padding: 6px 0;
+}
+
+.note-dialog .editor-checklist [data-check-del] {
+  border: none;
+}
+
+.editor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 6px;
+}
+
+.editor-chips:empty {
+  display: none;
+}
+
+.note-dialog .editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  font-size: 12px;
+  padding: 4px 11px;
+}
+
+.note-dialog .editor-chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.note-dialog .editor-error {
+  margin: 8px 0 4px;
+}
+
+.editor-panel {
+  margin: 4px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.note-dialog .editor-panel[hidden] {
+  display: none;
+}
+
+.note-dialog .editor-reminder-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  border: none;
+  margin: 4px 12px;
+  background: var(--panel-bg);
+}
+
+.note-dialog .editor-reminder-row .link {
+  border: none;
+  color: var(--accent);
+  padding: 7px 4px;
+}
+
+.editor-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+}
+
+.color-swatch[aria-checked="true"] {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.color-swatch[data-color="default"] { background: var(--surface); }
+.color-swatch[data-color="red"] { background: #4a2c2a; }
+.color-swatch[data-color="orange"] { background: #4d3a1f; }
+.color-swatch[data-color="yellow"] { background: #4f4a1f; }
+.color-swatch[data-color="green"] { background: #2e4033; }
+.color-swatch[data-color="teal"] { background: #274843; }
+.color-swatch[data-color="blue"] { background: #2b3a4d; }
+.color-swatch[data-color="purple"] { background: #3c2f4d; }
+.color-swatch[data-color="pink"] { background: #4a2f3d; }
+html[data-theme="light"] .color-swatch[data-color="default"] { background: #ffffff; }
+html[data-theme="light"] .color-swatch[data-color="red"] { background: #f28b82; }
+html[data-theme="light"] .color-swatch[data-color="orange"] { background: #fbbc04; }
+html[data-theme="light"] .color-swatch[data-color="yellow"] { background: #fff475; }
+html[data-theme="light"] .color-swatch[data-color="green"] { background: #ccff90; }
+html[data-theme="light"] .color-swatch[data-color="teal"] { background: #a7ffeb; }
+html[data-theme="light"] .color-swatch[data-color="blue"] { background: #cbf0f8; }
+html[data-theme="light"] .color-swatch[data-color="purple"] { background: #d7aefb; }
+html[data-theme="light"] .color-swatch[data-color="pink"] { background: #fdcfe8; }
+
+.note-dialog .editor-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 4px 12px;
+}
+
+.editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px;
+}
+
+.note-dialog .editor-tools {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.note-dialog .tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.note-dialog .tool b,
+.note-dialog .tool i {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.note-dialog .tool:hover,
+.note-dialog .tool[aria-expanded="true"] {
+  background: var(--tool-hover);
+  color: var(--text);
+}
+
+.note-dialog .tool:disabled {
+  opacity: 0.35;
+  background: none;
+}
+
+.note-dialog .editor-row {
+  margin: 0;
+  gap: 4px;
+}
+
+.note-dialog .editor-row button {
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+}
+
+.note-dialog .editor-row button:hover {
+  background: var(--tool-hover);
+}
+
+.note-dialog .editor-row .primary {
+  background: var(--accent);
+  color: #202124;
+}
+
+html[data-theme="light"] .note-dialog .editor-row .primary {
+  color: #ffffff;
+}
+
+.note-dialog .editor-row .primary:hover {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+
+/* Phones: the editor is a full-screen sheet; tools scroll sideways. */
+@media (max-width: 640px) {
+  .note-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .note-dialog {
+    width: 100%;
+    max-height: none;
+    height: 100dvh;
+    border: none;
+    border-radius: 0;
+  }
+
+  .editor-foot {
+    flex-wrap: wrap;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .note-dialog .editor-tools {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .note-dialog .editor-row {
+    margin-left: auto;
+  }
 }

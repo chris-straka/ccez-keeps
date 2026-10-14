@@ -423,6 +423,60 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("editor colour swatches tint the dialog and save the colour", async () => {
+    const t = mount([note({ id: "1", title: "Paint" })]);
+    await t.ready;
+    (t.cards()[0] as HTMLElement).click();
+    await t.tick();
+    const panel = t.app.querySelector<HTMLElement>('[data-panel-body="color"]')!;
+    expect(panel.hidden).toBe(true);
+    t.app.querySelector<HTMLButtonElement>('.editor-tools [data-panel="color"]')!.click();
+    expect(panel.hidden).toBe(false);
+    t.app.querySelector<HTMLButtonElement>('.color-swatch[data-color="teal"]')!.click();
+    expect(t.app.querySelector<HTMLElement>(".note-dialog")?.dataset["color"]).toBe("teal");
+    expect(
+      t.app.querySelector('.color-swatch[data-color="teal"]')?.getAttribute("aria-checked"),
+    ).toBe("true");
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.tick();
+    expect((await t.store.get("1"))?.color).toBe("teal");
+    t.cleanup();
+  });
+
+  test("editor panels open one at a time; Close discards", async () => {
+    const t = mount([note({ id: "1", title: "Keep" })]);
+    await t.ready;
+    (t.cards()[0] as HTMLElement).click();
+    await t.tick();
+    const remind = t.app.querySelector<HTMLElement>('[data-panel-body="remind"]')!;
+    const color = t.app.querySelector<HTMLElement>('[data-panel-body="color"]')!;
+    t.app.querySelector<HTMLButtonElement>('.editor-tools [data-panel="remind"]')!.click();
+    expect([remind.hidden, color.hidden]).toEqual([false, true]);
+    t.app.querySelector<HTMLButtonElement>('.editor-tools [data-panel="color"]')!.click();
+    expect([remind.hidden, color.hidden]).toEqual([true, false]);
+    expect(
+      t.app.querySelector('.editor-tools [data-panel="color"]')?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    t.app.querySelector<HTMLInputElement>(".editor-title")!.value = "Changed";
+    t.app.querySelector<HTMLButtonElement>('[data-action="cancel"]')!.click();
+    await t.tick();
+    expect(t.app.querySelector(".editor")).toBeNull();
+    expect((await t.store.get("1"))?.title).toBe("Keep");
+    t.cleanup();
+  });
+
+  test("a new reminder opens the editor on the reminder panel", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="reminders"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>("[data-new]")!.click();
+    await t.tick();
+    expect(t.app.querySelector<HTMLElement>('[data-panel-body="remind"]')!.hidden).toBe(false);
+    expect(document.activeElement?.classList.contains("editor-reminder")).toBe(true);
+    t.cleanup();
+  });
+
   test("editor Ctrl+Z walks history without toolbar buttons", async () => {
     const t = mount([note({ id: "1", title: "T", body: "one" })]);
     await t.ready;
@@ -1572,6 +1626,29 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     await t.tick();
     await t.tick();
     expect(copied).toContain("## Ship");
+    t.cleanup();
+  });
+
+  test("editor shows label and reminder chips", async () => {
+    const t = await mountWithLabels(
+      [note({ id: "1", title: "Call", labelIds: ["l1"], reminderAt: new Date(2030, 4, 1, 10).getTime() })],
+      [{ id: "l1", name: "Errands" }, { id: "l2", name: "Home" }],
+    );
+    await t.ready;
+    await t.tick();
+    t.cards()[0]!.click();
+    await t.tick();
+    const chips = () =>
+      [...t.app.querySelectorAll(".editor-chip")].map((c) => c.textContent?.trim() ?? "");
+    expect(chips()).toHaveLength(2);
+    expect(chips()[0]).toContain("May");
+    expect(chips()[1]).toBe("Errands");
+    const home = t.app.querySelector<HTMLInputElement>('.label-check[value="l2"]')!;
+    home.checked = true;
+    home.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(chips().slice(1)).toEqual(["Errands", "Home"]);
+    t.app.querySelector<HTMLButtonElement>('[data-action="clear-reminder"]')!.click();
+    expect(chips()).toEqual(["Errands", "Home"]);
     t.cleanup();
   });
 

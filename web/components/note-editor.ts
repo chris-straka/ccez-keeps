@@ -10,7 +10,7 @@
 import { NOTE_COLORS, NOTE_LIMITS, type Attachment, type ChecklistItem } from "../../shared/note.js";
 import { escapeHtml } from "./html.js";
 import { buzz } from "./haptics.js";
-import { processImageFile } from "./images.js";
+import { clipboardImages, processImageFile } from "./images.js";
 
 export interface NoteDraft {
   title: string;
@@ -165,9 +165,18 @@ export class NoteEditor extends HTMLElement {
         return;
       }
       if (target.classList.contains("editor-file")) {
-        void this.stageFiles((target as HTMLInputElement).files);
+        void this.attachFiles([...((target as HTMLInputElement).files ?? [])]);
         (target as HTMLInputElement).value = "";
       }
+    });
+    // Pasting a screenshot or copied image attaches it, wherever the
+    // caret is. Rich copies that also carry text still paste the text.
+    this.addEventListener("paste", (event) => {
+      const data = (event as ClipboardEvent).clipboardData;
+      const images = clipboardImages(data);
+      if (images.length === 0) return;
+      if (!data?.types.includes("text/plain")) event.preventDefault();
+      void this.attachFiles(images);
     });
     this.addEventListener("keydown", (event) => {
       if (event.key === "Escape") this.close(false);
@@ -463,10 +472,11 @@ export class NoteEditor extends HTMLElement {
     el.setAttribute("hidden", "");
   }
 
-  private async stageFiles(files: FileList | null): Promise<void> {
-    if (!files || files.length === 0) return;
+  /** Downscale and stage image files (photo picker, paste, composer). */
+  async attachFiles(files: File[]): Promise<void> {
+    if (files.length === 0) return;
     this.clearError();
-    for (const file of [...files].slice(0, NOTE_LIMITS.maxAttachments - this.staged.length)) {
+    for (const file of files.slice(0, NOTE_LIMITS.maxAttachments - this.staged.length)) {
       const attachment = await processImageFile(file);
       if (!attachment) {
         this.fail(`"${file.name}" is not a supported image or is too large.`);
@@ -474,7 +484,7 @@ export class NoteEditor extends HTMLElement {
       }
       this.staged.push(attachment);
     }
-    if (this.staged.length >= NOTE_LIMITS.maxAttachments && (files?.length ?? 0) > 0) {
+    if (this.staged.length >= NOTE_LIMITS.maxAttachments) {
       this.fail(`At most ${NOTE_LIMITS.maxAttachments} photos per note.`);
     }
     this.paintAttachments();
@@ -522,42 +532,47 @@ export class NoteEditor extends HTMLElement {
     this.push();
   }
 
+  /** What Save would store right now (also stashed across re-renders). */
+  draft(): NoteDraft {
+    const title = this.querySelector<HTMLInputElement>(".editor-title")?.value ?? "";
+    // Checklist mode: items are the source of truth; body carries the
+    // joined lines so older clients still show the text.
+    const checklist =
+      this.items === null
+        ? null
+        : this.items
+            .filter((i) => i.text.trim() !== "")
+            .slice(0, NOTE_LIMITS.maxChecklistItems)
+            .map((i) => ({ ...i, text: i.text.slice(0, NOTE_LIMITS.maxChecklistText) }));
+    const body =
+      checklist === null
+        ? (this.querySelector<HTMLTextAreaElement>(".editor-body")?.value ?? "")
+        : checklist.map((i) => i.text).join("\n");
+    const attachments = this.staged.slice(0, NOTE_LIMITS.maxAttachments);
+    const color =
+      this.querySelector<HTMLInputElement>(".editor-color")?.value ?? "default";
+    const labelIds = [...this.querySelectorAll<HTMLInputElement>(".label-check")]
+      .filter((box) => box.checked)
+      .map((box) => box.value);
+    const reminderAt = parseReminderInput(
+      this.querySelector<HTMLInputElement>(".editor-reminder")?.value ?? "",
+    );
+    // Repeat only exists attached to a reminder.
+    const repeatValue =
+      this.querySelector<HTMLSelectElement>(".editor-repeat")?.value ?? "";
+    const repeat =
+      reminderAt === null
+        ? null
+        : repeatValue === "daily" || repeatValue === "weekly"
+          ? repeatValue
+          : null;
+    return { title, body, color, labelIds, reminderAt, repeat, checklist, attachments };
+  }
+
   private close(save: boolean): void {
     if (save) {
-      const title = this.querySelector<HTMLInputElement>(".editor-title")?.value ?? "";
-      // Checklist mode: items are the source of truth; body carries the
-      // joined lines so older clients still show the text.
-      const checklist =
-        this.items === null
-          ? null
-          : this.items
-              .filter((i) => i.text.trim() !== "")
-              .slice(0, NOTE_LIMITS.maxChecklistItems)
-              .map((i) => ({ ...i, text: i.text.slice(0, NOTE_LIMITS.maxChecklistText) }));
-      const body =
-        checklist === null
-          ? (this.querySelector<HTMLTextAreaElement>(".editor-body")?.value ?? "")
-          : checklist.map((i) => i.text).join("\n");
-      const attachments = this.staged.slice(0, NOTE_LIMITS.maxAttachments);
-      const color =
-        this.querySelector<HTMLSelectElement>(".editor-color")?.value ?? "default";
-      const labelIds = [...this.querySelectorAll<HTMLInputElement>(".label-check")]
-        .filter((box) => box.checked)
-        .map((box) => box.value);
-      const reminderAt = parseReminderInput(
-        this.querySelector<HTMLInputElement>(".editor-reminder")?.value ?? "",
-      );
-      // Repeat only exists attached to a reminder.
-      const repeatValue =
-        this.querySelector<HTMLSelectElement>(".editor-repeat")?.value ?? "";
-      const repeat =
-        reminderAt === null
-          ? null
-          : repeatValue === "daily" || repeatValue === "weekly"
-            ? repeatValue
-            : null;
       this.dispatchEvent(
-        new CustomEvent("note-save", { bubbles: true, composed: true, detail: { title, body, color, labelIds, reminderAt, repeat, checklist, attachments } satisfies NoteDraft }),
+        new CustomEvent("note-save", { bubbles: true, composed: true, detail: this.draft() }),
       );
     } else {
       this.dispatchEvent(new CustomEvent("note-cancel", { bubbles: true, composed: true }));

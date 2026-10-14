@@ -7,6 +7,21 @@ import { NOTE_LIMITS, type Attachment } from "../../shared/note.js";
 const FULL_MAX_DIM = 1600;
 const THUMB_MAX_DIM = 256;
 
+/**
+ * Image files on a paste/drop. Screenshots arrive as `files`; some
+ * browsers only expose them as file items, so fall back to those.
+ */
+export function clipboardImages(data: DataTransfer | null | undefined): File[] {
+  if (!data) return [];
+  const isImage = (f: File | null): f is File => !!f && f.type.startsWith("image/");
+  const files = [...(data.files ?? [])].filter(isImage);
+  if (files.length > 0) return files;
+  return [...(data.items ?? [])]
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter(isImage);
+}
+
 /** Decoded byte estimate for a base64 data URL (4/3 inflation). */
 export function dataUrlBytes(dataUrl: string): number {
   return Math.ceil((dataUrl.length * 3) / 4);

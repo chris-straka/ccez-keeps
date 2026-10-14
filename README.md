@@ -69,6 +69,7 @@ panel; revoke it there. To give another machine one, insert a new
 | `tests/sync-engine.test.ts` | Push shape, conflicts, debounce, 401, delete-forever |
 | `tests/components.test.ts` | Shell render/search/mutations, 500-note smoke |
 | `tests/devices.test.ts` | Devices API client (list/rename/revoke shapes) |
+| `tests/paste.test.ts` | Pasted images attach (editor, composer, survives re-render) |
 | `tests/components.test.ts` (devices panel) | Web device list UI: render, rename, revoke, error state |
 
 ## Local development

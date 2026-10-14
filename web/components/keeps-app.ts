@@ -7,9 +7,9 @@ import type { Store, NoteView, SyncStatus } from "../store/types.js";
 import type { DrawingStore } from "../store/drawings.js";
 import { escapeHtml } from "./html.js";
 import { buzz } from "./haptics.js";
+import { clipboardImages } from "./images.js";
 import { DevicesClient, type DeviceInfo } from "./devices.js";
-import type { LabelOption, NoteDraft } from "./note-editor.js";
-import { parseReminderInput } from "./note-editor.js";
+import type { LabelOption, NoteDraft, NoteEditor } from "./note-editor.js";
 import type { DrawingDraft } from "./drawing-dialog.js";
 import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
@@ -173,6 +173,7 @@ export class KeepsApp extends HTMLElement {
     this.addEventListener("input", (event) => this.onInput(event));
     this.addEventListener("change", (event) => this.onChange(event));
     this.addEventListener("keydown", (event) => this.onKeyDown(event));
+    this.addEventListener("paste", (event) => this.onComposerPaste(event as ClipboardEvent));
     this.addEventListener("dragstart", (event) => this.onDragStart(event));
     this.addEventListener("dragover", (event) => this.onDragOver(event));
     this.addEventListener("dragleave", (event) => this.onDragLeave(event));
@@ -576,20 +577,9 @@ export class KeepsApp extends HTMLElement {
     editor: NoteDraft | null;
     composer: { title: string; body: string } | null;
   } {
+    // The whole draft, staged photos and checklist rows included.
     const editor =
-      this.querySelector(".editor") === null
-        ? null
-        : {
-            title: this.querySelector<HTMLInputElement>(".editor-title")?.value ?? "",
-            body: this.querySelector<HTMLTextAreaElement>(".editor-body")?.value ?? "",
-            color: this.querySelector<HTMLSelectElement>(".editor-color")?.value ?? "default",
-            labelIds: [...this.querySelectorAll<HTMLInputElement>(".label-check")]
-              .filter((box) => box.checked)
-              .map((box) => box.value),
-            reminderAt: parseReminderInput(
-              this.querySelector<HTMLInputElement>(".editor-reminder")?.value ?? "",
-            ),
-          };
+      this.querySelector(".editor") === null ? null : this.editor().draft();
     const composer = !this.composerOpen
       ? null
       : {
@@ -968,6 +958,10 @@ export class KeepsApp extends HTMLElement {
     );
   }
 
+  private editor(): NoteEditor {
+    return this.querySelector("note-editor") as unknown as NoteEditor;
+  }
+
   private openEditor(
     id: string | null,
     draft: NoteDraft,
@@ -1214,6 +1208,24 @@ export class KeepsApp extends HTMLElement {
       event.preventDefault();
       void this.saveComposer();
     }
+  }
+
+  /**
+   * The inline composer has no photo row: an image pasted into it moves
+   * the draft into the full editor with the image attached.
+   */
+  private onComposerPaste(event: ClipboardEvent): void {
+    if (!(event.target as HTMLElement).closest?.(".composer")) return;
+    const images = clipboardImages(event.clipboardData);
+    if (images.length === 0) return;
+    event.preventDefault();
+    const title = this.querySelector<HTMLInputElement>(".composer-title")?.value ?? "";
+    const body = this.querySelector<HTMLTextAreaElement>(".composer-body")?.value ?? "";
+    this.composerOpen = false;
+    void this.refresh().then(() => {
+      this.openEditor(null, { title, body, color: "default" });
+      void this.editor().attachFiles(images);
+    });
   }
 
   private onChange(event: Event): void {

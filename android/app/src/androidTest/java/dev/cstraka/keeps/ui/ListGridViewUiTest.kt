@@ -71,10 +71,15 @@ class ListGridViewUiTest {
         compose.onNodeWithContentDescription("List view").assertIsDisplayed()
     }
 
+    // One setContent per test: the rule refuses a second call.
     @Test
-    fun fab_showsInRemindersButNotArchive() {
+    fun fab_showsInReminders() {
         screen(NotesUiState(filter = NoteFilter.REMINDERS))
         compose.onNodeWithContentDescription("Take a note").assertIsDisplayed()
+    }
+
+    @Test
+    fun fab_hiddenInArchive() {
         screen(NotesUiState(filter = NoteFilter.ARCHIVE))
         compose.onAllNodesWithContentDescription("Take a note").assertCountEquals(0)
     }
@@ -101,7 +106,8 @@ class ListGridViewUiTest {
             ),
         )
         compose.onNodeWithContentDescription("Menu").performClick()
-        compose.onNodeWithText("Notes").assertIsDisplayed()
+        // "Notes" is both the tab and the drawer row.
+        compose.onAllNodesWithText("Notes").assertCountEquals(2)
         compose.onNodeWithText("Reminders").assertIsDisplayed()
         compose.onNodeWithText("Archive").assertIsDisplayed()
         compose.onNodeWithText("Trash").assertIsDisplayed()

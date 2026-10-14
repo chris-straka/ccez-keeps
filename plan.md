@@ -167,3 +167,9 @@ the notes were trashed once copied. Delete a row when it ships.
   removed as the likely cause (lazy node reuse mis-measures staggered
   lanes). Owner: if it still happens, say what the notes hold (photos,
   drawings) and whether it was the list view.
+- Three drawer label tests (`LabelImportUiTest`: long-press a label to
+  rename or delete) fail on the emulator, on the 2026-10-13 build too:
+  the long-press never opens the Edit label dialog. Pre-existing; the
+  nested `clickable` inside `NavigationDrawerItem` likely swallows the
+  outer `combinedClickable` long press. Not in the owner's list; fix
+  when the drawer is next touched.

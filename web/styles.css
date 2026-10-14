@@ -153,12 +153,12 @@ keeps-app {
   background: #41391f;
 }
 
+/* No max-width: the note grid fills the whole window, like Keep's
+   wide layouts. Composer, panels and list mode center themselves. */
 .content {
   flex: 1;
   padding: 20px 24px 60px;
   min-width: 0;
-  max-width: 1120px;
-  margin: 0 auto;
   width: 100%;
 }
 

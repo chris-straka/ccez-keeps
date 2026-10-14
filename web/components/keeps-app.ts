@@ -171,6 +171,7 @@ export class KeepsApp extends HTMLElement {
     this.addEventListener("click", (event) => this.onClick(event));
     this.addEventListener("input", (event) => this.onInput(event));
     this.addEventListener("change", (event) => this.onChange(event));
+    this.addEventListener("keydown", (event) => this.onKeyDown(event));
     this.addEventListener("dragstart", (event) => this.onDragStart(event));
     this.addEventListener("dragover", (event) => this.onDragOver(event));
     this.addEventListener("dragleave", (event) => this.onDragLeave(event));
@@ -746,7 +747,7 @@ export class KeepsApp extends HTMLElement {
           </div>
         </div>
         <div class="setting-row">
-          <div><strong>Shortcuts</strong><p class="panel-sub"><kbd>M</kbd> menu · <kbd>/</kbd> search · <kbd>Ctrl/⌘ Z</kbd> undo in the editor.</p></div>
+          <div><strong>Shortcuts</strong><p class="panel-sub"><kbd>M</kbd> menu · <kbd>/</kbd> search · <kbd>Ctrl/⌘ Enter</kbd> save a note · <kbd>Ctrl/⌘ Z</kbd> undo in the editor.</p></div>
         </div>
         <div class="setting-row">
           <div><strong>About</strong><p class="panel-sub">Keeps is open source.</p></div>
@@ -1162,6 +1163,16 @@ export class KeepsApp extends HTMLElement {
       } else if (action === "save") {
         void this.saveComposer();
       }
+    }
+  }
+
+  /** Cmd/Ctrl+Enter in the inline composer saves it, like the editor. */
+  private onKeyDown(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement;
+    if (!target.closest?.(".composer")) return;
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      void this.saveComposer();
     }
   }
 

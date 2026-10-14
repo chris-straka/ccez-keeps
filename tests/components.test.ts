@@ -475,6 +475,42 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("Cmd+Enter in the composer saves the new note", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
+    await t.tick();
+    const body = t.app.querySelector<HTMLTextAreaElement>(".composer-body")!;
+    body.value = "call the bank";
+    body.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }) as unknown as Event,
+    );
+    await t.tick();
+    await t.tick();
+    const all = await t.store.all();
+    expect(all.map((n) => n.body)).toEqual(["call the bank"]);
+    expect(t.app.querySelector(".composer")).toBeNull();
+    expect(t.stats().pushes).toBe(1);
+    t.cleanup();
+  });
+
+  test("Ctrl+Enter in the editor saves a new note", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>("[data-new]")!.click();
+    await t.tick();
+    const body = t.app.querySelector<HTMLTextAreaElement>(".editor-body")!;
+    body.value = "from the dialog";
+    body.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }) as unknown as Event,
+    );
+    await t.tick();
+    await t.tick();
+    expect((await t.store.all()).map((n) => n.body)).toEqual(["from the dialog"]);
+    expect(t.app.querySelector(".editor")).toBeNull();
+    t.cleanup();
+  });
+
   test("pin toggle persists and schedules a push", async () => {
     const t = mount([note({ id: "1", title: "Pinnable" })]);
     await t.ready;

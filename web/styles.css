@@ -1177,7 +1177,13 @@ kbd {
 .filter-chip-row {
   grid-column: 1 / -1;
   display: flex;
+  gap: 8px;
   margin-bottom: 2px;
+}
+
+.filter-copy {
+  color: var(--accent);
+  border-color: transparent;
 }
 
 .filter-chip {

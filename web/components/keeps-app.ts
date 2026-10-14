@@ -14,6 +14,7 @@ import type { DrawingDraft } from "./drawing-dialog.js";
 import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
 import { IDEAS_LABEL_NAME, isIdeasLabelName, type Label } from "../../shared/label.js";
+import { formatMarkdown, select } from "../../cli/lib.js";
 
 /** Minimal sync surface the shell needs (satisfied by SyncEngine). */
 export interface SyncPort {
@@ -716,6 +717,7 @@ export class KeepsApp extends HTMLElement {
              </div>`
           : `<div class="label-row" data-label-row="${escapeHtml(l.id)}" data-drop-label="${escapeHtml(l.id)}">
                <button data-label-filter="${escapeHtml(l.id)}"${l.id === this.activeLabelId ? ' aria-current="page" class="is-active"' : ""}>${TAG_ICON}<span>${escapeHtml(l.name)}</span><span class="label-count">${counts[l.id] ?? 0}</span></button>
+               <button data-label-copy="${escapeHtml(l.id)}" title="Copy every note with this label as markdown">Copy</button>
                <button data-label-rename="${escapeHtml(l.id)}" title="Rename label">Rename</button>
                <button data-label-delete="${escapeHtml(l.id)}" title="Delete label">Delete</button>
              </div>`,
@@ -895,7 +897,7 @@ export class KeepsApp extends HTMLElement {
       const name = this.labelNameMap()[this.activeLabelId] ?? "Label";
       const chip = doc.createElement("div");
       chip.className = "filter-chip-row";
-      chip.innerHTML = `<button class="filter-chip" data-label-filter="${escapeHtml(this.activeLabelId)}">${TAG_ICON}<span>${escapeHtml(name)}</span><span aria-hidden="true">×</span></button>`;
+      chip.innerHTML = `<button class="filter-chip" data-label-filter="${escapeHtml(this.activeLabelId)}">${TAG_ICON}<span>${escapeHtml(name)}</span><span aria-hidden="true">×</span></button><button class="filter-copy" data-label-copy="${escapeHtml(this.activeLabelId)}" title="Copy every note with this label as markdown">Copy as markdown</button>`;
       grid.appendChild(chip);
     }
     const names = this.labelNameMap();
@@ -984,6 +986,39 @@ export class KeepsApp extends HTMLElement {
     ).open(draft, this.labelOptions(), opts);
   }
 
+  /**
+   * Every live note with the label, as the same markdown `keeps export
+   * --label` prints, onto the clipboard for pasting into an agent.
+   */
+  private async copyLabelMarkdown(id: string): Promise<void> {
+    const label = this.labelCache.find((l) => l.id === id);
+    if (!label) return;
+    // Select against just this label so a duplicate name can't pick a
+    // different one; format with all labels so other tags still print.
+    const notes = select(
+      { notes: await this.requireStore().all(), labels: [label], cursor: 0 },
+      { label: label.name },
+    );
+    if (notes.length === 0) {
+      this.showToast(`No notes labelled ${label.name}`, null);
+      return;
+    }
+    try {
+      await this.ownerDocument.defaultView!.navigator.clipboard.writeText(
+        formatMarkdown(notes, this.labelCache),
+      );
+    } catch {
+      buzz("error");
+      this.showToast("Couldn't copy to the clipboard", null);
+      return;
+    }
+    buzz("confirm");
+    this.showToast(
+      `Copied ${notes.length} note${notes.length === 1 ? "" : "s"} labelled ${label.name}`,
+      null,
+    );
+  }
+
   private onLabelClick(button: HTMLElement): boolean {
     const ds = (button as HTMLElement).dataset;
     if (ds["labelCreate"] !== undefined) {
@@ -997,6 +1032,11 @@ export class KeepsApp extends HTMLElement {
         buzz("error");
       }
       void this.refresh();
+      return true;
+    }
+    const copyId = ds["labelCopy"];
+    if (copyId !== undefined) {
+      void this.copyLabelMarkdown(copyId);
       return true;
     }
     const filterId = ds["labelFilter"];
@@ -1148,7 +1188,7 @@ export class KeepsApp extends HTMLElement {
       return;
     }
     const labelBtn = target.closest(
-      '[data-label-create],[data-label-filter],[data-label-rename],[data-label-rename-save],[data-label-rename-cancel],[data-label-delete]',
+      '[data-label-create],[data-label-copy],[data-label-filter],[data-label-rename],[data-label-rename-save],[data-label-rename-cancel],[data-label-delete]',
     );
     if (labelBtn && this.onLabelClick(labelBtn as HTMLElement)) return;
     const composerBtn = target.closest("[data-composer]");

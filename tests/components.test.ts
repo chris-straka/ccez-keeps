@@ -1515,6 +1515,66 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
+  test("Copy on a label puts its notes on the clipboard as CLI markdown", async () => {
+    const { formatMarkdown } = await import("../cli/lib.js");
+    let copied = "";
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void (copied = text) },
+    });
+    const notes = [
+      note({ id: "a", title: "Ship", body: "web pass", labelIds: ["l1", "l2"], updatedAt: 2000 }),
+      note({ id: "b", title: "Plan", body: "q4", labelIds: ["l1"], updatedAt: 3000 }),
+      note({ id: "c", title: "Old", labelIds: ["l1"], archived: true }),
+      note({ id: "d", title: "Gone", labelIds: ["l1"], deleted: true }),
+      note({ id: "e", title: "Other", labelIds: ["l2"] }),
+    ];
+    const t = await mountWithLabels(notes, [
+      { id: "l1", name: "Work" },
+      { id: "l2", name: "Ideas" },
+    ]);
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-label-copy="l1"]')!.click();
+    await t.tick();
+    await t.tick();
+    const labels = [
+      { id: "l1", name: "Work", color: "default", updatedAt: 1000, deleted: false },
+      { id: "l2", name: "Ideas", color: "default", updatedAt: 1000, deleted: false },
+    ];
+    // Live, unarchived, newest edit first: exactly `keeps export --label Work`.
+    expect(copied).toBe(formatMarkdown([notes[1]!, notes[0]!], labels));
+    expect(copied).toContain("## Plan");
+    expect(copied).toContain("labels: Work, Ideas");
+    expect(copied).not.toContain("Old");
+    expect(t.app.querySelector(".toast")?.textContent).toContain("Copied 2 notes labelled Work");
+    t.cleanup();
+  });
+
+  test("the active label filter offers Copy as markdown", async () => {
+    let copied = "";
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void (copied = text) },
+    });
+    const t = await mountWithLabels(
+      [note({ id: "a", title: "Ship", labelIds: ["l1"] })],
+      [{ id: "l1", name: "Work" }],
+    );
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-view="labels"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-label-filter="l1"]')!.click();
+    await t.tick();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>(".filter-copy")!.click();
+    await t.tick();
+    await t.tick();
+    expect(copied).toContain("## Ship");
+    t.cleanup();
+  });
+
   test("editor checkbox list assigns a label on save", async () => {
     const t = await mountWithLabels(
       [note({ id: "1", title: "Shop", labelIds: [] })],

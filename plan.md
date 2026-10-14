@@ -171,9 +171,3 @@ the notes were trashed once copied. Delete a row when it ships.
   colour after a recolour until the app restarted; the Material Card's
   container colour never repainted, so the card paints its colour with a
   plain background modifier now (`CardColorUiTest`).
-- Three drawer label tests (`LabelImportUiTest`: long-press a label to
-  rename or delete) fail on the emulator, on the 2026-10-13 build too:
-  the long-press never opens the Edit label dialog. Pre-existing; the
-  nested `clickable` inside `NavigationDrawerItem` likely swallows the
-  outer `combinedClickable` long press. Not in the owner's list; fix
-  when the drawer is next touched.

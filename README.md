@@ -43,6 +43,10 @@ keeps archive 5f57
 keeps add --title "Done" --label Ideas "shipped in ccez-llm v0.30"
 ```
 
+Without the CLI, **Copy** on a label in the web app (Labels panel, or
+beside the active label filter) puts the same markdown as `keeps export
+--label` on the clipboard.
+
 The z token is the device "agents on z (keeps CLI)" in the web Devices
 panel; revoke it there. To give another machine one, insert a new
 `device_tokens` row holding the SHA-256 of a fresh 32-byte base64url token

@@ -158,15 +158,6 @@ the notes were trashed once copied. Delete a row when it ships.
   decision (plan non-goal "AI features" still stands until the owner
   says otherwise).
 
-### Web
-
-- Cmd+Enter while typing a new note saves it.
-- Notes should fill the entire width of the screen.
-- Export all notes with a label to the clipboard (label menu).
-- Pasting an image into a note does nothing, even with the photo button
-  on a new note. Paste from the clipboard should attach it.
-- The edit-note page looks ugly on desktop.
-
 ### Android
 
 - Editing a note and hitting save did not save the changes (seen twice;

@@ -42,10 +42,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** IDEAS is the Notes tab's sibling: live notes labelled Ideas, kept out of NOTES. */
 enum class NoteFilter { NOTES, IDEAS, REMINDERS, ARCHIVE, TRASH }
+
+/** Everything the editor can change, saved as one write (see [NotesViewModel.save]). */
+data class NoteEdit(
+    val title: String,
+    val body: String,
+    val color: String,
+    val labelIds: List<String> = emptyList(),
+    val reminderAt: Long? = null,
+    val repeat: String? = null,
+    val checklist: List<ChecklistItem>? = null,
+    val attachments: List<Attachment> = emptyList(),
+)
 
 data class NotesUiState(
     val notes: List<Note> = emptyList(),
@@ -254,6 +268,14 @@ class NotesViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotesUiState())
 
+    /**
+     * Serialises read-modify-write mutations. Two launched writers that
+     * both read a row before either wrote it (editor Save used to fire
+     * save + saveExtras back to back) let the second overwrite the
+     * first with stale fields; the lock makes each write see the last.
+     */
+    private val writes = Mutex()
+
     private fun touch() {
         SyncWorker.scheduleNow(app)
         // Every local write rebinds the list widget (no-op with none placed).
@@ -296,43 +318,43 @@ class NotesViewModel(
         touch()
     }
 
-    fun save(
-        note: Note,
-        title: String,
-        body: String,
-        color: String,
-        checklist: List<ChecklistItem>? = null,
-        attachments: List<Attachment> = emptyList(),
-    ) = viewModelScope.launch {
-        val current = store.all().firstOrNull { it.id == note.id } ?: note
-        val candidate = current.copy(
-            title = title, body = body, color = color,
-            checklist = checklist?.take(NoteLimits.MAX_CHECKLIST_ITEMS),
-            attachments = attachments.take(NoteLimits.MAX_ATTACHMENTS),
-            updatedAt = now(),
-        )
-        if (!isNote(candidate)) return@launch
-        store.put(candidate)
-        refreshReminder(candidate)
-        editing.value = null
-        touch()
+    /** Editor Save: text, colour, labels, reminder, checklist and photos in one write. */
+    fun save(note: Note, edit: NoteEdit) = viewModelScope.launch {
+        writes.withLock {
+            val current = store.noteById(note.id) ?: note
+            val candidate = current.copy(
+                title = edit.title, body = edit.body, color = edit.color,
+                labelIds = edit.labelIds.take(NoteLimits.MAX_LABELS),
+                reminderAt = edit.reminderAt, repeat = edit.repeat,
+                checklist = edit.checklist?.take(NoteLimits.MAX_CHECKLIST_ITEMS),
+                attachments = edit.attachments.take(NoteLimits.MAX_ATTACHMENTS),
+                updatedAt = now(),
+            )
+            if (!isNote(candidate)) return@withLock
+            store.put(candidate)
+            refreshReminder(candidate)
+            editing.value = null
+            touch()
+        }
     }
 
-    /** Persist editor label/reminder picks; reschedules or clears the firing. */
+    /** Drag-to-label and similar: persist label/reminder picks alone. */
     fun saveExtras(
         note: Note,
         labelIds: List<String>,
         reminderAt: Long?,
         repeat: String? = null,
     ) = viewModelScope.launch {
-        val current = store.all().firstOrNull { it.id == note.id } ?: return@launch
-        val updated = current.copy(
-            labelIds = labelIds.take(20), reminderAt = reminderAt,
-            repeat = repeat, updatedAt = now(),
-        )
-        store.put(updated)
-        refreshReminder(updated)
-        touch()
+        writes.withLock {
+            val current = store.noteById(note.id) ?: return@withLock
+            val updated = current.copy(
+                labelIds = labelIds.take(NoteLimits.MAX_LABELS), reminderAt = reminderAt,
+                repeat = repeat, updatedAt = now(),
+            )
+            store.put(updated)
+            refreshReminder(updated)
+            touch()
+        }
     }
 
     fun createLabel(name: String, onDone: (Label) -> Unit = {}) = viewModelScope.launch {
@@ -399,13 +421,19 @@ class NotesViewModel(
     }
 
     fun togglePin(note: Note) = viewModelScope.launch {
-        store.put(note.copy(pinned = !note.pinned, updatedAt = now()))
-        touch()
+        writes.withLock {
+            val current = store.noteById(note.id) ?: note
+            store.put(current.copy(pinned = !note.pinned, updatedAt = now()))
+            touch()
+        }
     }
 
     fun toggleArchive(note: Note) = viewModelScope.launch {
-        store.put(note.copy(archived = !note.archived, updatedAt = now()))
-        touch()
+        writes.withLock {
+            val current = store.noteById(note.id) ?: note
+            store.put(current.copy(archived = !note.archived, updatedAt = now()))
+            touch()
+        }
     }
 
     fun moveToTrash(note: Note) = viewModelScope.launch {

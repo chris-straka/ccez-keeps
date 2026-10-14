@@ -47,7 +47,7 @@ class LabelImportUiTest {
                 onCreate = { _, _, _, _, _, _, _ -> },
                 onOpenEditor = {},
                 onCloseEditor = {},
-                onSave = { _, _, _, _, _, _ -> },
+                onSave = { _, _ -> },
                 onSaveDrawing = { _, _ -> },
                 onPin = {},
                 onArchive = {},

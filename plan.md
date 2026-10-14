@@ -160,13 +160,10 @@ the notes were trashed once copied. Delete a row when it ships.
 
 ### Android
 
-- Editing a note and hitting save did not save the changes (seen twice;
-  the web editor is fine).
 - Scroll up in the note grid with many notes, scroll back down: only one
-  note stays rendered.
-- The search field never loses focus when tapping away, tapping something
-  else, or leaving.
-- Editor: typing in the body can scroll under the keyboard. Undo/redo
-  should be icons; list, check, photo, draw should be icons; colours
-  should expand only when tapped; reminders belong in their own add
-  menu; colours and the toolbar may need to move.
+  note stays rendered. Not reproduced on the emulator (2026-10-14: 40
+  mixed notes, slow swipes and flings both ways, 6-8 cards every stop;
+  `GridScrollUiTest` guards it). The card's `animateContentSize` was
+  removed as the likely cause (lazy node reuse mis-measures staggered
+  lanes). Owner: if it still happens, say what the notes hold (photos,
+  drawings) and whether it was the list view.

@@ -38,7 +38,7 @@ class ListGridViewUiTest {
                 onComposerOpen = {},
                 onOpenEditor = {},
                 onCloseEditor = {},
-                onSave = { _, _, _, _, _, _ -> },
+                onSave = { _, _ -> },
                 onSaveDrawing = { _, _ -> },
                 onPin = {},
                 onArchive = {},

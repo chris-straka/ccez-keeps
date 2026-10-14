@@ -54,7 +54,7 @@ class DrawingUiTest {
                 onCreate = { _, _, _, _, _, _, _ -> },
                 onOpenEditor = {},
                 onCloseEditor = {},
-                onSave = { _, _, _, _, _, _ -> },
+                onSave = { _, _ -> },
                 onSaveDrawing = onSaveDrawing,
                 onPin = {},
                 onArchive = {},
@@ -100,7 +100,7 @@ class DrawingUiTest {
                 onSaveDrawing = { id, s -> savedId = id; savedStrokes = s },
             )
         }
-        compose.onNodeWithText("Draw").performClick()
+        compose.onNodeWithContentDescription("Draw").performClick()
         compose.onNodeWithTag("draw-canvas").performTouchInput { swipeUp() }
         compose.onNodeWithTag("drawing-save").performClick()
 
@@ -156,10 +156,11 @@ class DrawingUiTest {
                 onSaveDrawing = { _, _ -> },
             )
         }
-        compose.onNodeWithText("Labels").assertIsDisplayed()
-        compose.onNodeWithText("No reminder").assertIsDisplayed()
-        // Opening the picker lists existing labels with a create field.
-        compose.onNodeWithText("Edit").performClick()
+        // Reminder and labels live in the + menu; Labels opens the picker,
+        // which lists existing labels with a create field.
+        compose.onNodeWithContentDescription("Add").performClick()
+        compose.onNodeWithText("Reminder").assertIsDisplayed()
+        compose.onNodeWithText("Labels").performClick()
         compose.onNodeWithText("home").assertIsDisplayed()
         compose.onNodeWithText("New label").assertIsDisplayed()
     }

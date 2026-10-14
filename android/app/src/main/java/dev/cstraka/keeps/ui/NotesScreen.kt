@@ -3,7 +3,16 @@ package dev.cstraka.keeps.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -19,7 +28,13 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +58,16 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.FormatBold
+import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -67,6 +91,12 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -122,7 +152,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -249,7 +278,7 @@ fun NotesScreen(
     onIdea: () -> Unit = {},
     onOpenEditor: (Note?) -> Unit,
     onCloseEditor: () -> Unit,
-    onSave: (Note, String, String, String, List<ChecklistItem>?, List<Attachment>) -> Unit,
+    onSave: (Note, NoteEdit) -> Unit,
     onSaveExtras: (Note, List<String>, Long?, String?) -> Unit = { _, _, _, _ -> },
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
@@ -287,6 +316,17 @@ fun NotesScreen(
     var settingsOpen by remember { mutableStateOf(false) }
     // Label being renamed/deleted via drawer long-press; null hides.
     var labelDialog by remember { mutableStateOf<Label?>(null) }
+    // The search field used to keep focus (and the keyboard) through taps
+    // on the grid, tab and drawer switches, and the editor opening. Every
+    // one of those now clears it; Back does too while it is focused.
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
+    BackHandler(enabled = searchFocused) { focusManager.clearFocus() }
+    LaunchedEffect(state.editing, composerOpen, settingsOpen, drawer.isOpen) {
+        if (state.editing != null || composerOpen || settingsOpen || drawer.isOpen) {
+            focusManager.clearFocus()
+        }
+    }
     // Backup file picker for Settings → Import (same JSON Export writes).
     val importPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -485,8 +525,24 @@ fun NotesScreen(
                         Text(if (state.filter == NoteFilter.IDEAS) "Search ideas" else "Search notes")
                     },
                     leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    trailingIcon = if (state.query.isNotEmpty()) {
+                        {
+                            IconButton(onClick = {
+                                onQuery("")
+                                focusManager.clearFocus()
+                            }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        null
+                    },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        .onFocusChanged { searchFocused = it.isFocused }
+                        .testTag("searchField"),
                 )
                 // Notes | Ideas: ideas get their own tab instead of mixing
                 // into the notes grid. Hidden on the other drawer views.
@@ -503,6 +559,7 @@ fun NotesScreen(
                                 selected = state.filter == f,
                                 onClick = {
                                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    focusManager.clearFocus()
                                     onFilter(f)
                                 },
                                 text = { Text(name) },
@@ -532,7 +589,19 @@ fun NotesScreen(
                             (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.98f))
                                 .togetherWith(fadeOut(tween(150)))
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        // Any touch on the grid (tap, scroll start) drops
+                        // search focus; the Initial pass leaves the gesture
+                        // itself for the cards and the scroller.
+                        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    if (event.changes.any { it.changedToDown() }) {
+                                        focusManager.clearFocus()
+                                    }
+                                }
+                            }
+                        },
                     ) { _ ->
                         if (state.notes.isEmpty()) {
                             Box(Modifier.fillMaxSize()) {
@@ -660,9 +729,11 @@ fun NotesScreen(
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = onCloseEditor,
+                // One callback, one write: a second launched writer here
+                // used to read the row before the first wrote it and put
+                // the old title/body back (lost edits, 2026-10-13).
                 onConfirm = { t, b, c, labIds, reminder, repeat, checklist, attachments ->
-                    onSave(note, t, b, c, checklist, attachments)
-                    onSaveExtras(note, labIds, reminder, repeat)
+                    onSave(note, NoteEdit(t, b, c, labIds, reminder, repeat, checklist, attachments))
                 },
                 onSaveDrawing = onSaveDrawing,
             )
@@ -1113,7 +1184,11 @@ private fun NoteCard(
             })
             .combinedClickable(onClick = onOpen),
     ) {
-        Column(Modifier.padding(12.dp).animateContentSize()) {
+        // No animateContentSize here: lazy grids reuse card nodes while
+        // scrolling, and a size animation left over from the previous
+        // occupant mis-measures the staggered lanes (cards vanish until
+        // the next layout pass).
+        Column(Modifier.padding(12.dp)) {
             if (note.title.isNotBlank()) {
                 Text(note.title, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
@@ -1392,150 +1467,367 @@ fun NoteDialog(
             onDismiss()
         }
     }
-    // Focus-mode editor: full-screen dim, centered card, title focused.
-    // (AlertDialog's stock scrim and sizing bury the editor on big phones.)
+    // Keep-style sheet: the card fills the window and takes the note's
+    // colour; title and body are borderless; labels and the reminder are
+    // chips; one footer row of icon tools, then Cancel and a filled Save.
+    // decorFitsSystemWindows=false + safeDrawing padding: the sheet
+    // shrinks above the keyboard, so the caret scrolls inside the middle
+    // instead of sliding under the IME.
+    var colorOpen by remember { mutableStateOf(false) }
+    var addOpen by remember { mutableStateOf(false) }
+    val cardColor = if (c == "default") MaterialTheme.colorScheme.surface else noteColor(c, dark)
+    val plainField = TextFieldDefaults.colors(
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+        disabledContainerColor = Color.Transparent,
+        focusedIndicatorColor = Color.Transparent,
+        unfocusedIndicatorColor = Color.Transparent,
+        disabledIndicatorColor = Color.Transparent,
+    )
+
+    @Composable
+    fun RowScope.Tool(
+        icon: ImageVector,
+        label: String,
+        enabled: Boolean = true,
+        onClick: () -> Unit,
+    ) {
+        IconButton(
+            onClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+            },
+            enabled = enabled,
+            modifier = Modifier.weight(1f).height(44.dp),
+        ) {
+            Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
+        }
+    }
+
     Dialog(
         onDismissRequest = ::closeKeeping,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.7f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = ::closeKeeping,
-                )
-                .padding(horizontal = 24.dp, vertical = 32.dp),
-            contentAlignment = Alignment.Center,
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
         ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.96f),
+            Card(
+                colors = CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxSize().testTag("editorCard"),
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                Column(Modifier.fillMaxSize()) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(start = 20.dp, top = 12.dp),
+                    )
                     Column(
-                        modifier = Modifier.padding(20.dp)
-                            .verticalScroll(rememberScrollState()),
+                        modifier = Modifier.weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp),
                     ) {
-                        Text(title, style = MaterialTheme.typography.headlineSmall)
-                        Spacer(Modifier.height(12.dp))
-                OutlinedTextField(value = t, onValueChange = { t = it },
-                    label = { Text("Title") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester))
-                Spacer(Modifier.height(8.dp))
-                val rows = items
-                if (rows == null) {
-                    OutlinedTextField(value = b, onValueChange = { b = it; pushHist(it.text) },
-                        label = { Text("Body") }, minLines = 3,
-                        modifier = Modifier.fillMaxWidth())
-                } else {
-                    Column {
-                        for (item in rows) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = item.checked,
-                                    onCheckedChange = { checked ->
-                                        items = rows.map {
-                                            if (it.id == item.id) it.copy(checked = checked) else it
+                        if (staged.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            ) {
+                                for (a in staged.toList()) {
+                                    val thumb = remember(a.thumbUrl) {
+                                        attachmentBitmap(a.thumbUrl)?.asImageBitmap()
+                                    }
+                                    Box(contentAlignment = Alignment.TopEnd) {
+                                        if (thumb != null) {
+                                            Image(
+                                                bitmap = thumb,
+                                                contentDescription = a.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.size(96.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable { viewing = a },
+                                            )
+                                        } else {
+                                            Text(a.name, fontSize = 11.sp)
                                         }
-                                    },
-                                )
-                                OutlinedTextField(
-                                    value = item.text,
-                                    onValueChange = { text ->
-                                        items = rows.map {
-                                            if (it.id == item.id) it.copy(text = text) else it
+                                        IconButton(
+                                            onClick = { staged.remove(a) },
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = "Remove ${a.name}",
+                                                modifier = Modifier.size(16.dp),
+                                            )
                                         }
-                                    },
-                                    placeholder = { Text("List item") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                IconButton(onClick = {
-                                    items = rows.filter { it.id != item.id }
-                                }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete item")
+                                    }
                                 }
                             }
                         }
-                        TextButton(
-                            onClick = {
-                                if (rows.size < NoteLimits.MAX_CHECKLIST_ITEMS) {
-                                    items = rows + ChecklistItem(
-                                        id = UUID.randomUUID().toString(), text = "",
+                        attachError?.let { err ->
+                            Text(
+                                err, fontSize = 12.sp, color = Color(0xFFE5534B),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            )
+                        }
+                        TextField(
+                            value = t,
+                            onValueChange = { t = it },
+                            placeholder = { Text("Title", style = MaterialTheme.typography.titleLarge) },
+                            textStyle = MaterialTheme.typography.titleLarge,
+                            singleLine = true,
+                            colors = plainField,
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                                .testTag("editorTitle"),
+                        )
+                        val rows = items
+                        if (rows == null) {
+                            TextField(
+                                value = b,
+                                onValueChange = { b = it; pushHist(it.text) },
+                                placeholder = { Text("Note") },
+                                minLines = 4,
+                                colors = plainField,
+                                modifier = Modifier.fillMaxWidth().testTag("editorBody"),
+                            )
+                        } else {
+                            Column {
+                                for (item in rows) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = item.checked,
+                                            onCheckedChange = { checked ->
+                                                items = rows.map {
+                                                    if (it.id == item.id) it.copy(checked = checked) else it
+                                                }
+                                            },
+                                        )
+                                        TextField(
+                                            value = item.text,
+                                            onValueChange = { text ->
+                                                items = rows.map {
+                                                    if (it.id == item.id) it.copy(text = text) else it
+                                                }
+                                            },
+                                            placeholder = { Text("List item") },
+                                            singleLine = true,
+                                            colors = plainField,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        IconButton(onClick = {
+                                            items = rows.filter { it.id != item.id }
+                                        }) {
+                                            Icon(Icons.Filled.Close, contentDescription = "Delete item")
+                                        }
+                                    }
+                                }
+                                TextButton(
+                                    onClick = {
+                                        if (rows.size < NoteLimits.MAX_CHECKLIST_ITEMS) {
+                                            items = rows + ChecklistItem(
+                                                id = UUID.randomUUID().toString(), text = "",
+                                            )
+                                        }
+                                    },
+                                    enabled = rows.size < NoteLimits.MAX_CHECKLIST_ITEMS,
+                                ) { Text("+ Add item") }
+                            }
+                        }
+                        // Chips: labels, then the reminder with its repeat.
+                        val byId = allLabels.associateBy { it.id }
+                        if (selIds.isNotEmpty() || reminder != null) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            ) {
+                                for (id in selIds.toList()) {
+                                    val name = byId[id]?.name ?: "label"
+                                    InputChip(
+                                        selected = false,
+                                        onClick = { selIds.remove(id) },
+                                        label = { Text(name) },
+                                        trailingIcon = {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = "Remove label $name",
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        },
                                     )
                                 }
-                            },
-                            enabled = rows.size < NoteLimits.MAX_CHECKLIST_ITEMS,
-                        ) { Text("+ Add item") }
+                                reminder?.let { at ->
+                                    InputChip(
+                                        selected = true,
+                                        onClick = { showDate = true },
+                                        label = {
+                                            Text(
+                                                formatReminder(at) + when (repeatSel) {
+                                                    "daily" -> " · Daily"
+                                                    "weekly" -> " · Weekly"
+                                                    else -> ""
+                                                },
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Filled.Notifications,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = "Clear reminder",
+                                                modifier = Modifier.size(16.dp).clickable {
+                                                    reminder = null
+                                                    repeatSel = null
+                                                },
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        if (reminder != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            ) {
+                                Text("Repeats", style = MaterialTheme.typography.bodySmall)
+                                for ((label, value) in listOf("Never" to null, "Daily" to "daily", "Weekly" to "weekly")) {
+                                    FilterChip(
+                                        selected = repeatSel == value,
+                                        onClick = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                            repeatSel = value
+                                        },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    // 12sp and no side padding: full labels fit the row instead of
-                    // truncating to "Ch"/"Ph" on 412dp phones.
-                    val toolPad = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            undo()
-                        }, enabled = histIdx > 0,
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("Undo", maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            redo()
-                        }, enabled = histIdx < history.size - 1,
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("Redo", maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            wrapSelection("**", "**")
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("B", fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            wrapSelection("*", "*")
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("I", fontStyle = FontStyle.Italic, maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            toggleList()
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("List", maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            toChecklistMode()
-                        },
-                        modifier = Modifier.weight(1.3f),
-                        contentPadding = toolPad,
-                    ) { Text("Checks", maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    // Panels above the toolbar: colour swatches, label picker.
+                    AnimatedVisibility(visible = colorOpen) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            for (key in COLOR_KEYS) {
+                                val selected = c == key
+                                Box(
+                                    Modifier.size(32.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(noteColor(key, dark))
+                                        .border(
+                                            if (selected) 2.dp else 1.dp,
+                                            if (selected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                                            RoundedCornerShape(16.dp),
+                                        )
+                                        .clickable {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            c = key
+                                        }
+                                        .testTag("color-$key"),
+                                )
+                            }
+                        }
+                    }
+                    AnimatedVisibility(visible = labelPickerOpen) {
+                        Column(Modifier.padding(horizontal = 12.dp)) {
+                            for (lab in allLabels) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = selIds.contains(lab.id),
+                                        onCheckedChange = { checked ->
+                                            if (checked) {
+                                                if (!selIds.contains(lab.id)) selIds.add(lab.id)
+                                            } else {
+                                                selIds.remove(lab.id)
+                                            }
+                                        },
+                                    )
+                                    Text(lab.name)
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = newLabelName,
+                                    onValueChange = { newLabelName = it },
+                                    label = { Text("New label") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = {
+                                    val name = newLabelName.trim()
+                                    if (name.isNotEmpty()) {
+                                        pendingSelect = name
+                                        newLabelName = ""
+                                        onCreateLabel(name) { created ->
+                                            if (!selIds.contains(created.id)) {
+                                                selIds.add(created.id)
+                                            }
+                                            pendingSelect = null
+                                        }
+                                    }
+                                }) { Text("Add") }
+                            }
+                        }
+                    }
+                    // Tool row: add menu (reminder, labels), then icons.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    ) {
+                        Box(Modifier.weight(1f)) {
+                            IconButton(
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    addOpen = true
+                                },
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add", modifier = Modifier.size(22.dp))
+                            }
+                            DropdownMenu(expanded = addOpen, onDismissRequest = { addOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (reminder == null) "Reminder" else "Change reminder") },
+                                    leadingIcon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
+                                    onClick = {
+                                        addOpen = false
+                                        showDate = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Labels") },
+                                    leadingIcon = { Icon(Icons.Filled.Label, contentDescription = null) },
+                                    onClick = {
+                                        addOpen = false
+                                        colorOpen = false
+                                        labelPickerOpen = !labelPickerOpen
+                                    },
+                                )
+                            }
+                        }
+                        Tool(Icons.Filled.Palette, "Colour") {
+                            labelPickerOpen = false
+                            colorOpen = !colorOpen
+                        }
+                        Tool(Icons.Filled.Image, "Photo") {
                             if (staged.size < NoteLimits.MAX_ATTACHMENTS) {
                                 photoPicker.launch(
                                     PickVisualMediaRequest(
@@ -1545,210 +1837,29 @@ fun NoteDialog(
                             } else {
                                 attachError = "At most ${NoteLimits.MAX_ATTACHMENTS} photos per note."
                             }
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("Photo", maxLines = 1, fontSize = 12.sp) }
-                    TextButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            drawOpen = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = toolPad,
-                    ) { Text("Draw", maxLines = 1, fontSize = 12.sp) }
-                }
-                if (staged.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        }
+                        Tool(Icons.Filled.Draw, "Draw") { drawOpen = true }
+                        Tool(Icons.Filled.Checklist, "Checklist") { toChecklistMode() }
+                        Tool(Icons.Filled.CheckBox, "Checkbox on this line", enabled = items == null) { toggleList() }
+                        Tool(Icons.Filled.FormatBold, "Bold", enabled = items == null) { wrapSelection("**", "**") }
+                        Tool(Icons.Filled.FormatItalic, "Italic", enabled = items == null) { wrapSelection("*", "*") }
+                        Tool(Icons.AutoMirrored.Filled.Undo, "Undo", enabled = histIdx > 0) { undo() }
+                        Tool(Icons.AutoMirrored.Filled.Redo, "Redo", enabled = histIdx < history.size - 1) { redo() }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, bottom = 10.dp),
                     ) {
-                        for (a in staged.toList()) {
-                            val thumb = remember(a.thumbUrl) {
-                                attachmentBitmap(a.thumbUrl)?.asImageBitmap()
-                            }
-                            Box(contentAlignment = Alignment.TopEnd) {
-                                if (thumb != null) {
-                                    Image(
-                                        bitmap = thumb,
-                                        contentDescription = a.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(72.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .clickable { viewing = a },
-                                    )
-                                } else {
-                                    Text(a.name, fontSize = 11.sp)
-                                }
-                                TextButton(
-                                    onClick = { staged.remove(a) },
-                                    modifier = Modifier.size(28.dp),
-                                ) { Text("×", fontSize = 12.sp) }
-                            }
-                        }
-                    }
-                }
-                attachError?.let { err ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(err, fontSize = 12.sp, color = Color(0xFFE5534B))
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (key in COLOR_KEYS) {
-                        val selected = c == key
-                        Box(
-                            Modifier.size(28.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(noteColor(key, dark))
-                                .clickable {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    c = key
-                                }
-                                .padding(if (selected) 6.dp else 0.dp),
-                        ) {
-                            if (selected) {
-                                Box(
-                                    Modifier.fillMaxSize()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color.White.copy(alpha = 0.85f)),
-                                )
-                            }
-                        }
-                    }
-                }
-                        Spacer(Modifier.height(8.dp))
-                        // Labels: selected chips plus a picker with create.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Labels", style = MaterialTheme.typography.labelLarge)
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = { labelPickerOpen = !labelPickerOpen }) {
-                                Text(if (labelPickerOpen) "Done" else "Edit")
-                            }
-                        }
-                        if (selIds.isNotEmpty()) {
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                val byId = allLabels.associateBy { it.id }
-                                for (id in selIds.toList()) {
-                                    val name = byId[id]?.name ?: "label"
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                            )
-                                            .clickable { selIds.remove(id) }
-                                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                                    ) {
-                                        Text("$name ✕", fontSize = 12.sp)
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                        }
-                        if (labelPickerOpen) {
-                            Column {
-                                for (lab in allLabels) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = selIds.contains(lab.id),
-                                            onCheckedChange = { checked ->
-                                                if (checked) {
-                                                    if (!selIds.contains(lab.id)) selIds.add(lab.id)
-                                                } else {
-                                                    selIds.remove(lab.id)
-                                                }
-                                            },
-                                        )
-                                        Text(lab.name)
-                                    }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    OutlinedTextField(
-                                        value = newLabelName,
-                                        onValueChange = { newLabelName = it },
-                                        label = { Text("New label") },
-                                        singleLine = true,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    TextButton(onClick = {
-                                        val name = newLabelName.trim()
-                                        if (name.isNotEmpty()) {
-                                            pendingSelect = name
-                                            newLabelName = ""
-                                            onCreateLabel(name) { created ->
-                                                if (!selIds.contains(created.id)) {
-                                                    selIds.add(created.id)
-                                                }
-                                                pendingSelect = null
-                                            }
-                                        }
-                                    }) { Text("Add") }
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                        }
-                        // Reminder: date then time pickers; no exact alarms.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Notifications, contentDescription = null,
-                                modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                reminder?.let { formatReminder(it) } ?: "No reminder",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
+                        TextButton(onClick = onDismiss) { Text("Cancel") }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onConfirm(
+                                t, bodyForSave(), c, selIds.toList(), reminder, repeatSel,
+                                checklistForSave(), staged.toList(),
                             )
-                            if (reminder != null) {
-                                TextButton(onClick = {
-                                    reminder = null
-                                    repeatSel = null
-                                }) { Text("Clear") }
-                            }
-                            TextButton(onClick = { showDate = true }) {
-                                Text(if (reminder == null) "Add" else "Change")
-                            }
-                        }
-                        // Repeat only exists attached to a reminder.
-                        if (reminder != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "Repeats",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                for ((label, value) in listOf("None" to null, "Daily" to "daily", "Weekly" to "weekly")) {
-                                    val selected = repeatSel == value
-                                    TextButton(onClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                        repeatSel = value
-                                    }) {
-                                        Text(
-                                            label,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            TextButton(onClick = onDismiss) { Text("Cancel") }
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                onConfirm(
-                                    t, bodyForSave(), c, selIds.toList(), reminder, repeatSel,
-                                    checklistForSave(), staged.toList(),
-                                )
-                            }) { Text("Save") }
-                        }
+                        }) { Text("Save") }
                     }
                 }
             }

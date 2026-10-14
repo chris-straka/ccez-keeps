@@ -25,6 +25,29 @@ search bar; web: Ideas in the sidebar) and stay out of the Notes grid; a
 drawer label filter still shows them. mediaforge reads those notes daily through the read-only
 `GET /api/ideas` feed (contracts/api.md, docs/access.md).
 
+## Agents (`keeps` CLI)
+
+Agents read and clean up the owner's notes with `cli/keeps.ts`
+(`~/.local/bin/keeps` on z runs it). An agent is just another enrolled
+device: it sends a device token (`KEEPS_TOKEN`, or
+`~/.config/ccez-keeps/token`, mode 600) and uses the same note sync as the
+phone, so its edits merge by last-write-wins and show up everywhere.
+
+```sh
+keeps ls                    # live notes, newest first (--archived, --trash, --label NAME, --json)
+keeps show 5f57 02fd        # full text; ids take unique prefixes
+keeps export --label Ideas  # markdown of every match, for pasting into an agent
+keeps rm 5f57 02fd          # trash (30-day retention, restorable in the app)
+keeps rm --label Ideas      # trash everything with a label
+keeps archive 5f57
+keeps add --title "Done" --label Ideas "shipped in ccez-llm v0.30"
+```
+
+The z token is the device "agents on z (keeps CLI)" in the web Devices
+panel; revoke it there. To give another machine one, insert a new
+`device_tokens` row holding the SHA-256 of a fresh 32-byte base64url token
+(`wrangler d1 execute ccez-keeps --remote`), never copy z's.
+
 ## Map
 
 - `shared/` — frozen data contract: `Note`, validators, LWW merge

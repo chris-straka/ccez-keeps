@@ -11,5 +11,5 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["web", "worker", "db", "shared", "tests", "build.ts", "drizzle.config.ts"]
+  "include": ["web", "worker", "db", "shared", "tests", "cli", "build.ts", "drizzle.config.ts"]
 }

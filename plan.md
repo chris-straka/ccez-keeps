@@ -141,3 +141,41 @@ Dependencies: 0 before A/B/C; A+B before E; C before D (hosting contract); A+B+C
 - https://github.com/jakearchibald/idb
 - https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
 - https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
+
+## Owner feedback, 2026-10-13 (from the owner's own notes)
+
+The owner wrote these as notes in the app and asked for them to live here;
+the notes were trashed once copied. Delete a row when it ships.
+
+### Agents
+
+- "I need an agent to clear all the notes for me after I'm done with
+  them." "Maybe I need some way to export all the notes with a label to
+  my clipboard, so I can ask an agent? Maybe we can integrate agent stuff
+  right into the app as well." -> the `keeps` CLI (`cli/keeps.ts`,
+  README "Agents"): an agent lists, reads, trashes, archives and writes
+  notes with its own device token. In-app agent features are a separate
+  decision (plan non-goal "AI features" still stands until the owner
+  says otherwise).
+
+### Web
+
+- Cmd+Enter while typing a new note saves it.
+- Notes should fill the entire width of the screen.
+- Export all notes with a label to the clipboard (label menu).
+- Pasting an image into a note does nothing, even with the photo button
+  on a new note. Paste from the clipboard should attach it.
+- The edit-note page looks ugly on desktop.
+
+### Android
+
+- Editing a note and hitting save did not save the changes (seen twice;
+  the web editor is fine).
+- Scroll up in the note grid with many notes, scroll back down: only one
+  note stays rendered.
+- The search field never loses focus when tapping away, tapping something
+  else, or leaving.
+- Editor: typing in the body can scroll under the keyboard. Undo/redo
+  should be icons; list, check, photo, draw should be icons; colours
+  should expand only when tapped; reminders belong in their own add
+  menu; colours and the toolbar may need to move.

@@ -61,14 +61,17 @@ jobs:
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - name: Unit tests + build the test APKs
-        # Sync points at a dead port so tests never touch production.
+        # Sync and the self-updater point at a dead port so tests never
+        # touch production or GitHub releases.
         env:
           KEEPS_BASE_URL: http://10.0.2.2:9
+          KEEPS_RELEASE_URL: http://10.0.2.2:9/latest
         run: ./gradlew :synclogic:test :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Instrumented UI tests
         uses: reactivecircus/android-emulator-runner@v2
         env:
           KEEPS_BASE_URL: http://10.0.2.2:9
+          KEEPS_RELEASE_URL: http://10.0.2.2:9/latest
         with:
           api-level: 34
           arch: x86_64

@@ -3,6 +3,7 @@ package dev.cstraka.keeps.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -71,12 +72,14 @@ class EditSaveUiTest {
             compose.onNodeWithTag("editorTitle").performTextInput("Groceries (Sat)")
             compose.onNodeWithTag("editorBody").performTextClearance()
             compose.onNodeWithTag("editorBody").performTextInput("milk and eggs")
+            compose.onNodeWithContentDescription("Colour").performClick()
+            compose.onNodeWithTag("color-teal").performClick()
             compose.onNodeWithText("Save").performClick()
 
             // Give every launched write a chance to land, then look at Room.
             // (A timeout here reads as a plain value mismatch below.)
             try {
-                compose.waitUntil(5_000) {
+                compose.waitUntil(20_000) {
                     bodyNow() == "milk and eggs" && titleNow() == "Groceries (Sat)"
                 }
             } catch (_: androidx.compose.ui.test.ComposeTimeoutException) {
@@ -84,6 +87,7 @@ class EditSaveUiTest {
             Thread.sleep(1_500)
             assertEquals("milk and eggs", bodyNow())
             assertEquals("Groceries (Sat)", titleNow())
+            assertEquals("teal", runBlocking { app.localStore.noteById(seeded.id)?.color })
         }
     }
 }

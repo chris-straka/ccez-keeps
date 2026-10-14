@@ -162,6 +162,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dev.cstraka.keeps.data.attachmentBitmap
@@ -1171,8 +1173,9 @@ private fun NoteCard(
         note.labelIds.mapNotNull { id -> labels.firstOrNull { it.id == id } }
     }
     Card(
-        colors = CardDefaults.cardColors(containerColor = noteColor(note.color, dark)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(noteColor(note.color, dark))
             // Long-press starts a system drag (the node detects it and
             // calls this factory for the payload; the drop bar appears via
             // onDragStart). Plain tap still opens the editor below.
@@ -1741,6 +1744,7 @@ fun NoteDialog(
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             c = key
                                         }
+                                        .semantics { contentDescription = "Colour $key" }
                                         .testTag("color-$key"),
                                 )
                             }

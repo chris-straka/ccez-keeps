@@ -167,6 +167,10 @@ the notes were trashed once copied. Delete a row when it ships.
   removed as the likely cause (lazy node reuse mis-measures staggered
   lanes). Owner: if it still happens, say what the notes hold (photos,
   drawings) and whether it was the list view.
+- Found while verifying (fixed 2026-10-14): a note card kept its old
+  colour after a recolour until the app restarted; the Material Card's
+  container colour never repainted, so the card paints its colour with a
+  plain background modifier now (`CardColorUiTest`).
 - Three drawer label tests (`LabelImportUiTest`: long-press a label to
   rename or delete) fail on the emulator, on the 2026-10-13 build too:
   the long-press never opens the Edit label dialog. Pre-existing; the

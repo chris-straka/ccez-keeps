@@ -1,10 +1,12 @@
 package dev.cstraka.keeps.ui
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.cstraka.keeps.sync.newLabel
 import org.junit.Assert.assertEquals
@@ -22,8 +25,7 @@ import org.junit.runner.RunWith
 
 /**
  * On-device verification for Settings import and drawer label editing.
- * Emulator-only: cannot run headless in CI here; kept compiling so the
- * device lab covers them.
+ * Runs on an emulator (CI: the deploy workflow's test-android job).
  */
 @RunWith(AndroidJUnit4::class)
 class LabelImportUiTest {
@@ -104,7 +106,10 @@ class LabelImportUiTest {
         openDrawer()
         compose.onNodeWithText("home").performTouchInput { longClick() }
         // Prefilled with the current name; clearing disables Rename.
-        compose.onNodeWithTag("labelNameField").assertTextEquals("home")
+        // (assertTextEquals would also count the "Label name" label.)
+        compose.onNodeWithTag("labelNameField").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("home")),
+        )
         compose.onNodeWithTag("labelNameField").performTextClearance()
         compose.onNodeWithText("Rename").assertIsNotEnabled()
         compose.onNodeWithTag("labelNameField").performTextInput("work")

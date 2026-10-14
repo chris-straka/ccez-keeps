@@ -19,6 +19,7 @@ import androidx.compose.foundation.Image
 import android.content.ClipData
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -163,6 +164,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -415,24 +418,22 @@ fun NotesScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                         for (lab in state.labels) {
-                            NavigationDrawerItem(
-                                label = { Text(lab.name) },
-                                icon = { Icon(Icons.Filled.Label, contentDescription = null) },
+                            // Not NavigationDrawerItem: its inner clickable
+                            // Surface takes the press, so an outer
+                            // combinedClickable never saw the long press.
+                            LabelDrawerItem(
+                                name = lab.name,
                                 selected = state.labelFilter == lab.id,
-                                onClick = {},
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                                    .combinedClickable(
-                                        onClick = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            onFilter(NoteFilter.NOTES)
-                                            onLabelFilter(if (state.labelFilter == lab.id) null else lab.id)
-                                            scope.launch { drawer.close() }
-                                        },
-                                        onLongClick = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            labelDialog = lab
-                                        },
-                                    ),
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    onFilter(NoteFilter.NOTES)
+                                    onLabelFilter(if (state.labelFilter == lab.id) null else lab.id)
+                                    scope.launch { drawer.close() }
+                                },
+                                onLongClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    labelDialog = lab
+                                },
                             )
                         }
                     }
@@ -1949,5 +1950,34 @@ fun NoteDialog(
                 TextButton(onClick = { showTime = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/** A drawer row that looks like NavigationDrawerItem but takes a long press. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LabelDrawerItem(
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val content = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 8.dp)
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(CircleShape)
+            .background(if (selected) colors.secondaryContainer else Color.Transparent)
+            .combinedClickable(role = Role.Tab, onClick = onClick, onLongClick = onLongClick)
+            .semantics { this.selected = selected }
+            .padding(start = 16.dp, end = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Label, contentDescription = null, tint = content)
+        Spacer(Modifier.width(12.dp))
+        Text(name, color = content)
     }
 }

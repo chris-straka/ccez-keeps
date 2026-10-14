@@ -1,12 +1,10 @@
 package dev.cstraka.keeps
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -15,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -24,6 +23,9 @@ import kotlinx.coroutines.launch
 import dev.cstraka.keeps.ui.EnrollViewModel
 import dev.cstraka.keeps.ui.NotesScreen
 import dev.cstraka.keeps.ui.NotesViewModel
+import dev.cstraka.keeps.ui.NoteFilter
+import dev.cstraka.keeps.update.UpdatePhase
+import dev.cstraka.keeps.update.UpdateWorker
 
 class MainActivity : ComponentActivity() {
 
@@ -83,6 +85,41 @@ class MainActivity : ComponentActivity() {
         notesModel.openIdeaComposer()
     }
 
+    /**
+     * "Install unknown apps" opened from Keeps' own task, so Back lands
+     * here and the update carries straight on to Android's prompt.
+     */
+    private val allowInstalls = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (packageManager.canRequestPackageInstalls()) UpdateWorker.checkNow(this, manual = true)
+    }
+
+    private fun checkForUpdate() {
+        val phase = app.updater.state.value.phase
+        if (phase == UpdatePhase.NEEDS_PERMISSION && !packageManager.canRequestPackageInstalls()) {
+            runCatching { allowInstalls.launch(app.updater.permissionIntent()) }
+        } else {
+            UpdateWorker.checkNow(this, manual = true)
+        }
+    }
+
+    /** Update notifications need this on Android 13+; asked once. */
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {}
+
+    private fun askNotificationsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
+        val prefs = getSharedPreferences("update_check", MODE_PRIVATE)
+        if (prefs.getBoolean("asked_notifications", false)) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        prefs.edit().putBoolean("asked_notifications", true).apply()
+        notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     /** Flipped once enrollment completes so the UI swaps without relaunch. */
     private var enrolledVersion = mutableStateOf(0)
 
@@ -91,6 +128,9 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
         handleComposeExtra(intent)
         handleSharedText(intent)
+        handleUpdateExtra(intent)
+        if (app.updater.takeResume()) restoreScreen()
+        if (app.authStore.isEnrolled && savedInstanceState == null) askNotificationsOnce()
         setContent {
             val enrolled = remember(enrolledVersion.value) { app.authStore.isEnrolled }
             val theme by notesModel.theme.collectAsState()
@@ -109,6 +149,9 @@ class MainActivity : ComponentActivity() {
                 val settingsMessage by notesModel.settingsMessage.collectAsState()
                 val settingsBusy by notesModel.settingsBusy.collectAsState()
                 val composerOpen by notesModel.composerOpen.collectAsState()
+                // A silent self-update waits while unsaved text is on screen.
+                val editorOpen = state.editing != null || composerOpen
+                SideEffect { app.editorOpen = editorOpen }
                 NotesScreen(
                     state = state,
                     needsLogin = state.syncStatus is dev.cstraka.keeps.sync.SyncStatus.NeedsLogin,
@@ -144,8 +187,8 @@ class MainActivity : ComponentActivity() {
                     theme = theme,
                     onTheme = notesModel::setTheme,
                     appVersion = BuildConfig.VERSION_NAME,
-                    updateTag = notesModel.updateTag.collectAsState().value,
-                    onUpdate = { openUpdatePage() },
+                    update = app.updater.state.collectAsState().value,
+                    onCheckUpdate = { checkForUpdate() },
                     onExport = { shareExport() },
                     onImportJson = notesModel::importJson,
                     onRenameLabel = notesModel::renameLabel,
@@ -161,6 +204,44 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
         handleComposeExtra(intent)
         handleSharedText(intent)
+        handleUpdateExtra(intent)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        saveScreen()
+    }
+
+    /** Where the owner was, so the app reopens there after a self-update. */
+    private fun saveScreen() {
+        val state = notesModel.state.value
+        getSharedPreferences("ui_resume", MODE_PRIVATE).edit()
+            .putString("filter", state.filter.name)
+            .putString("label", state.labelFilter)
+            .putString("query", state.query)
+            .putString("note", state.editing?.id)
+            .apply()
+    }
+
+    private fun restoreScreen() {
+        val prefs = getSharedPreferences("ui_resume", MODE_PRIVATE)
+        prefs.getString("filter", null)
+            ?.let { name -> NoteFilter.entries.firstOrNull { it.name == name } }
+            ?.let(notesModel::setFilter)
+        notesModel.setLabelFilter(prefs.getString("label", null))
+        notesModel.setQuery(prefs.getString("query", null).orEmpty())
+        if (app.authStore.isEnrolled) prefs.getString("note", null)?.let(notesModel::openNoteById)
+    }
+
+    /** "Update ready" notification without the install permission yet. */
+    private fun handleUpdateExtra(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_ALLOW_INSTALLS, false) != true) return
+        intent.removeExtra(EXTRA_ALLOW_INSTALLS)
+        if (packageManager.canRequestPackageInstalls()) {
+            UpdateWorker.checkNow(this, manual = true)
+        } else {
+            runCatching { allowInstalls.launch(app.updater.permissionIntent()) }
+        }
     }
 
     /** Shared text from any app becomes a note (enrolled only). Consumed once. */
@@ -224,20 +305,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_NOTE_ID = "dev.cstraka.keeps.EXTRA_NOTE_ID"
         /** Launcher shortcut + widget: capture an idea (voice first). */
         const val ACTION_IDEA = "dev.cstraka.keeps.action.IDEA"
-
-        /** Update entry point shown in Settings (always the newest release). */
-        const val LATEST_RELEASE_URL =
-            "https://github.com/chris-straka/ccez-keeps/releases/latest"
-    }
-
-    /** Latest release page in a Custom Tab (same browser UX as enrollment). */
-    private fun openUpdatePage() {
-        try {
-            CustomTabsIntent.Builder().build()
-                .launchUrl(this, Uri.parse(LATEST_RELEASE_URL))
-        } catch (e: Exception) {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LATEST_RELEASE_URL)))
-        }
+        /** Update notification: open "install unknown apps" from here. */
+        const val EXTRA_ALLOW_INSTALLS = "dev.cstraka.keeps.EXTRA_ALLOW_INSTALLS"
     }
 
     private fun signOut() {

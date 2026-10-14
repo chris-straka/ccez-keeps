@@ -22,6 +22,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import dev.cstraka.keeps.update.UpdatePhase
+import dev.cstraka.keeps.update.UpdateUi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
@@ -304,9 +306,9 @@ fun NotesScreen(
     theme: ThemeMode = ThemeMode.DARK,
     onTheme: (ThemeMode) -> Unit = {},
     appVersion: String = "",
-    /** Newest release tag when it is newer than this build; null hides. */
-    updateTag: String? = null,
-    onUpdate: () -> Unit = {},
+    /** Self-updater state for the "Check for updates" row. */
+    update: UpdateUi = UpdateUi(),
+    onCheckUpdate: () -> Unit = {},
     onExport: () -> Unit = {},
     onImportJson: (String) -> Unit = {},
     onRenameLabel: (String, String) -> Unit = { _, _ -> },
@@ -806,20 +808,9 @@ fun NotesScreen(
                         Text("Revoke it anytime from the web app device list.",
                             style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(4.dp))
-                        if (appVersion.isNotBlank()) {
-                            Text("Keeps $appVersion",
-                                style = MaterialTheme.typography.bodySmall)
-                            Spacer(Modifier.height(4.dp))
-                        }
-                        TextButton(onClick = {
+                        UpdateRow(appVersion, update) {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onUpdate()
-                        }) {
-                            Text(
-                                if (updateTag != null) "Update available ($updateTag)" else "Get the latest update",
-                                fontWeight = if (updateTag != null) FontWeight.Bold else FontWeight.Normal,
-                                color = if (updateTag != null) MaterialTheme.colorScheme.primary else Color.Unspecified,
-                            )
+                            onCheckUpdate()
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = {
@@ -1979,5 +1970,56 @@ private fun LabelDrawerItem(
         Icon(Icons.Filled.Label, contentDescription = null, tint = content)
         Spacer(Modifier.width(12.dp))
         Text(name, color = content)
+    }
+}
+
+/**
+ * Settings: current version, last check, and what the self-updater is
+ * doing. Tap = check now (and install, or open Android's prompt).
+ */
+@Composable
+private fun UpdateRow(appVersion: String, update: UpdateUi, onClick: () -> Unit) {
+    val tag = update.tag
+    val status = when (update.phase) {
+        UpdatePhase.CHECKING -> "Checking…"
+        UpdatePhase.DOWNLOADING -> "Downloading $tag…"
+        UpdatePhase.READY -> "$tag ready · installs when you leave the app"
+        UpdatePhase.NEEDS_PERMISSION -> "$tag ready · tap to allow Keeps to install it"
+        UpdatePhase.WAITING_FOR_YOU -> "$tag ready · tap to install"
+        UpdatePhase.INSTALLING -> "Installing $tag…"
+        UpdatePhase.FAILED -> "Couldn't finish · retries later"
+        UpdatePhase.UP_TO_DATE -> "Up to date"
+        UpdatePhase.IDLE -> if (tag != null) "$tag available" else null
+    }
+    val now = System.currentTimeMillis()
+    val checked = if (update.lastCheck == 0L) "not checked yet"
+    else if (now - update.lastCheck < 60_000L) "checked just now"
+    else "checked " + android.text.format.DateUtils.getRelativeTimeSpanString(
+            update.lastCheck, now, android.text.format.DateUtils.MINUTE_IN_MILLIS,
+        ).toString().replaceFirstChar { it.lowercase() }
+    val highlight = tag != null && update.phase != UpdatePhase.UP_TO_DATE
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp)
+            .testTag("check-updates"),
+    ) {
+        Text(
+            "Check for updates",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (highlight) MaterialTheme.colorScheme.primary else Color.Unspecified,
+        )
+        Text(
+            listOfNotNull(appVersion.takeIf { it.isNotBlank() }?.let { "Keeps $it" }, checked).joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (status != null) {
+            Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
     }
 }

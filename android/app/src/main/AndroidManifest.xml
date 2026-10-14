@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Self-update (update/Updater.kt): install the verified release APK
+         through PackageInstaller; silent once Keeps is its own installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- Lets the enrollment Custom Tab warm up / resolve a browser. -->
     <queries>
@@ -41,6 +45,15 @@
         <receiver
             android:name=".sync.SnoozeReceiver"
             android:exported="false" />
+
+        <!-- Self-update session results + "the new version is in". -->
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Settings export shares a JSON backup through a one-shot URI. -->
         <provider

@@ -44,6 +44,12 @@ class EditSaveUiTest {
     @Before
     fun seed() {
         app.authStore.saveEnrollment("test-device", "test-token", "emulator")
+        // MainActivity asks for notifications once (update notices); a
+        // granted permission keeps that system dialog off the screen.
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(app.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         runBlocking {
             for (n in app.localStore.all()) app.localStore.dropLocal(n.id)
             seeded = app.localStore.create("Groceries", "milk")

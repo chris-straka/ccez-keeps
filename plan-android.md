@@ -135,6 +135,27 @@ Cloudflare Access stays untouched.
    deployed; web canvas dialog + card render + sync lane (100 `bun` tests,
    `tsc` clean); Android lane + UI as above, verified on emulator.
 
+7. **Self-update — DONE 2026-10-14.** `update/Updater.kt` +
+   `UpdateWorker` (WorkManager, every 6 h and at app start, network
+   only) read GitHub `releases/latest`, download the APK into app
+   storage, verify size, SHA-256 (GitHub's asset `digest`, else the
+   `.sha256` that release.yml now publishes), package, newer version
+   and the installed signing certificate, then install through a
+   PackageInstaller session with `USER_ACTION_NOT_REQUIRED`. Pure
+   parts (release JSON, asset/checksum choice, versionCode formula)
+   live in `:synclogic` `UpdateCheck.kt` with tests. versionCode now
+   grows with the version (every release up to 0.5.2 shipped 1).
+   Findings on the API 36 emulator: once "install unknown apps" is on,
+   even the first self-update is silent (Keeps becomes its own
+   installer of record), so the "Update ready, tap to install"
+   notification is for older Android / OEM prompts; Android 10+ blocks
+   an app from reopening itself after the install kills it, so a
+   Settings-started update posts "Keeps updated, tap to pick up where
+   you left off", and background installs wait until the app is left
+   (never while an editor is open) and restore tab/label/search on the
+   next open. Debug builds read `KEEPS_RELEASE_URL` (tests serve a fake
+   release from the host); release builds always use GitHub.
+
 ## Validation
 
 - `bun install`, `bun run build`, `bun test` pass; Android unit tests pass

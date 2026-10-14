@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val GITHUB_LATEST = "https://api.github.com/repos/chris-straka/ccez-keeps/releases/latest"
+
 android {
     namespace = "dev.cstraka.keeps"
     compileSdk = 36
@@ -14,7 +16,6 @@ android {
         applicationId = "dev.cstraka.keeps"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
         // Release CI passes -PVERSION_NAME=<tag>; local builds fall back
         // to the newest git tag so Settings shows the real version.
         val tagVersion = providers.gradleProperty("VERSION_NAME").orNull
@@ -26,6 +27,14 @@ android {
             }.getOrNull()?.takeIf { it.isNotEmpty() }
         versionName = (tagVersion?.removePrefix("v") ?: "0.0.0-dev")
             .takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+.*")) } ?: "0.0.0-dev"
+        // Grows with the version (same formula as versionCodeFor in
+        // :synclogic) so self-updates install over older builds. Every
+        // release before 0.5.3 shipped versionCode 1.
+        versionCode = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)").find(versionName!!)?.destructured
+            ?.let { (major, minor, patch) ->
+                major.toInt() * 1_000_000 + minor.toInt().coerceAtMost(999) * 1_000 +
+                    patch.toInt().coerceAtMost(999)
+            }?.coerceAtLeast(1) ?: 1
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Prod origin. The Worker serves the SPA + /api/* as one unit, so
         // the app talks to the same host as the browser (no CORS involved).
@@ -34,6 +43,9 @@ android {
         val baseUrl = System.getenv("KEEPS_BASE_URL")?.takeIf { it.isNotBlank() }
             ?: "https://keeps.ccez.uk"
         buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
+        // Self-updater source. Release builds always use GitHub; debug
+        // builds take KEEPS_RELEASE_URL so tests can serve a fake release.
+        buildConfigField("String", "RELEASE_URL", "\"$GITHUB_LATEST\"")
     }
 
     signingConfigs {
@@ -53,6 +65,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            val releaseUrl = System.getenv("KEEPS_RELEASE_URL")?.takeIf { it.isNotBlank() } ?: GITHUB_LATEST
+            buildConfigField("String", "RELEASE_URL", "\"$releaseUrl\"")
+        }
         release {
             isMinifyEnabled = false
             // Play-ready when the env keystore exists; debug-signed

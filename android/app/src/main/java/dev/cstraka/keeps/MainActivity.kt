@@ -134,6 +134,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val enrolled = remember(enrolledVersion.value) { app.authStore.isEnrolled }
             val theme by notesModel.theme.collectAsState()
+            // Dark bar icons on the light theme (they were white on white).
+            val dark = dev.cstraka.keeps.ui.themeDark(theme)
+            androidx.compose.runtime.SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
             if (!enrolled) {
                 val state by enrollModel.state.collectAsState()
                 EnrollScreen(

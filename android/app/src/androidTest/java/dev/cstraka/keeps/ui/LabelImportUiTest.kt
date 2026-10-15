@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -80,8 +81,8 @@ class LabelImportUiTest {
     fun settings_showsImportNextToExport() {
         screen()
         openSettings()
-        compose.onNodeWithText("Export notes").assertIsDisplayed()
-        compose.onNodeWithText("Import notes").assertIsDisplayed()
+        compose.onNodeWithText("Export notes").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Import notes").performScrollTo().assertIsDisplayed()
     }
 
     @Test

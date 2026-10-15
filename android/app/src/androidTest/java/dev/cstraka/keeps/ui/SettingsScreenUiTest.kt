@@ -85,10 +85,10 @@ class SettingsScreenUiTest {
     @Test
     fun revokeNoteSitsOnTheLoginRow() {
         settings()
-        compose.onNodeWithText("New login").assertIsDisplayed()
+        compose.onNodeWithText("New login").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(
             "Replaces this phone's token. Revoke it anytime from the web app device list.",
-        ).assertIsDisplayed()
+        ).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -99,14 +99,14 @@ class SettingsScreenUiTest {
         compose.onNodeWithTag("device-name").performTextReplacement("Work phone")
         compose.onNodeWithContentDescription("Rename").performClick()
         compose.runOnIdle { assertEquals("Work phone", renamed) }
-        compose.onNodeWithTag("settings-message").assertIsDisplayed()
+        compose.onNodeWithTag("settings-message").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun themeIsASegmentedChoice() {
         settings(current = ThemeMode.LIGHT)
-        compose.onNodeWithTag("theme-light").assertIsSelected()
-        compose.onNodeWithTag("theme-dark").performClick()
+        compose.onNodeWithTag("theme-light").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("theme-dark").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(ThemeMode.DARK, theme) }
     }
 

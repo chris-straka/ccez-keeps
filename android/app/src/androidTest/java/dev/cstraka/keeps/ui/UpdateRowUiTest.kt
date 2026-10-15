@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.cstraka.keeps.update.UpdatePhase
 import dev.cstraka.keeps.update.UpdateUi
@@ -50,6 +51,8 @@ class UpdateRowUiTest {
         }
         compose.onNodeWithContentDescription("Menu").performClick()
         compose.onNodeWithText("Settings").performClick()
+        // Updates sits below the fold on small screens.
+        compose.onNodeWithTag("check-updates").performScrollTo()
     }
 
     @Test

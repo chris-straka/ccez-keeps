@@ -165,6 +165,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -309,6 +310,9 @@ fun NotesScreen(
     /** Self-updater state for the "Check for updates" row. */
     update: UpdateUi = UpdateUi(),
     onCheckUpdate: () -> Unit = {},
+    /** "Install unknown apps" granted to Keeps (shown in Settings). */
+    canInstallUpdates: Boolean = true,
+    onAllowInstalls: () -> Unit = {},
     onExport: () -> Unit = {},
     onImportJson: (String) -> Unit = {},
     onRenameLabel: (String, String) -> Unit = { _, _ -> },
@@ -388,6 +392,8 @@ fun NotesScreen(
         Surface(modifier = Modifier.fillMaxSize()) {
         ModalNavigationDrawer(
             drawerState = drawer,
+            // Settings covers the notes; keep them out of TalkBack and tests.
+            modifier = if (settingsOpen) Modifier.clearAndSetSemantics {} else Modifier,
             drawerContent = {
                 ModalDrawerSheet {
                     Text("Keeps", style = MaterialTheme.typography.titleLarge,
@@ -745,96 +751,29 @@ fun NotesScreen(
         }
 
         if (settingsOpen) {
-            var nameDraft by remember(deviceName) { mutableStateOf(deviceName) }
-            LaunchedEffect(settingsMessage) {
-                if (settingsMessage != null) {
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                }
-            }
-            AlertDialog(
-                onDismissRequest = {
+            SettingsScreen(
+                deviceName = deviceName,
+                message = settingsMessage,
+                busy = settingsBusy,
+                onRename = onRename,
+                onRotate = onRotate,
+                theme = theme,
+                onTheme = onTheme,
+                appVersion = appVersion,
+                update = update,
+                canInstallUpdates = canInstallUpdates,
+                onCheckUpdate = onCheckUpdate,
+                onAllowInstalls = onAllowInstalls,
+                onExport = onExport,
+                onImport = { importPicker.launch(arrayOf("application/json")) },
+                onSignOut = {
                     settingsOpen = false
                     onClearSettingsMessage()
+                    onSignOut()
                 },
-                title = { Text("Settings") },
-                text = {
-                    Column {
-                        OutlinedTextField(
-                            value = nameDraft,
-                            onValueChange = { nameDraft = it },
-                            label = { Text("This phone's name") },
-                            singleLine = true,
-                            enabled = !settingsBusy,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onRename(nameDraft)
-                                },
-                                enabled = !settingsBusy,
-                            ) { Text("Rename") }
-                            TextButton(
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onRotate()
-                                },
-                                enabled = !settingsBusy,
-                            ) { Text("New login") }
-                        }
-                        if (settingsMessage != null) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(settingsMessage, style = MaterialTheme.typography.bodySmall)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text("Theme", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            for (mode in ThemeMode.entries) {
-                                val selected = theme == mode
-                                TextButton(onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onTheme(mode)
-                                }) {
-                                    Text(
-                                        mode.name.lowercase().replaceFirstChar { it.uppercase() },
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text("Revoke it anytime from the web app device list.",
-                            style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(4.dp))
-                        UpdateRow(appVersion, update) {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onCheckUpdate()
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                onExport()
-                            }) { Text("Export notes") }
-                            TextButton(onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                importPicker.launch(arrayOf("application/json"))
-                            }) { Text("Import notes") }
-                        }
-                        TextButton(onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            settingsOpen = false
-                            onClearSettingsMessage()
-                            onSignOut()
-                        }) { Text("Sign out this phone") }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        settingsOpen = false
-                        onClearSettingsMessage()
-                    }) { Text("Close") }
+                onBack = {
+                    settingsOpen = false
+                    onClearSettingsMessage()
                 },
             )
         }
@@ -1970,56 +1909,5 @@ private fun LabelDrawerItem(
         Icon(Icons.Filled.Label, contentDescription = null, tint = content)
         Spacer(Modifier.width(12.dp))
         Text(name, color = content)
-    }
-}
-
-/**
- * Settings: current version, last check, and what the self-updater is
- * doing. Tap = check now (and install, or open Android's prompt).
- */
-@Composable
-private fun UpdateRow(appVersion: String, update: UpdateUi, onClick: () -> Unit) {
-    val tag = update.tag
-    val status = when (update.phase) {
-        UpdatePhase.CHECKING -> "Checking…"
-        UpdatePhase.DOWNLOADING -> "Downloading $tag…"
-        UpdatePhase.READY -> "$tag ready · installs when you leave the app"
-        UpdatePhase.NEEDS_PERMISSION -> "$tag ready · tap to allow Keeps to install it"
-        UpdatePhase.WAITING_FOR_YOU -> "$tag ready · tap to install"
-        UpdatePhase.INSTALLING -> "Installing $tag…"
-        UpdatePhase.FAILED -> "Couldn't finish · retries later"
-        UpdatePhase.UP_TO_DATE -> "Up to date"
-        UpdatePhase.IDLE -> if (tag != null) "$tag available" else null
-    }
-    val now = System.currentTimeMillis()
-    val checked = if (update.lastCheck == 0L) "not checked yet"
-    else if (now - update.lastCheck < 60_000L) "checked just now"
-    else "checked " + android.text.format.DateUtils.getRelativeTimeSpanString(
-            update.lastCheck, now, android.text.format.DateUtils.MINUTE_IN_MILLIS,
-        ).toString().replaceFirstChar { it.lowercase() }
-    val highlight = tag != null && update.phase != UpdatePhase.UP_TO_DATE
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
-            .testTag("check-updates"),
-    ) {
-        Text(
-            "Check for updates",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (highlight) MaterialTheme.colorScheme.primary else Color.Unspecified,
-        )
-        Text(
-            listOfNotNull(appVersion.takeIf { it.isNotBlank() }?.let { "Keeps $it" }, checked).joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (status != null) {
-            Text(
-                status,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (highlight) FontWeight.Bold else FontWeight.Normal,
-            )
-        }
     }
 }

@@ -92,7 +92,16 @@ class MainActivity : ComponentActivity() {
     private val allowInstalls = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
-        if (packageManager.canRequestPackageInstalls()) UpdateWorker.checkNow(this, manual = true)
+        canInstallUpdates.value = packageManager.canRequestPackageInstalls()
+        if (canInstallUpdates.value) UpdateWorker.checkNow(this, manual = true)
+    }
+
+    /** Shown in Settings → Updates; re-read whenever Keeps comes back. */
+    private val canInstallUpdates = androidx.compose.runtime.mutableStateOf(true)
+
+    override fun onResume() {
+        super.onResume()
+        canInstallUpdates.value = packageManager.canRequestPackageInstalls()
     }
 
     private fun checkForUpdate() {
@@ -197,6 +206,10 @@ class MainActivity : ComponentActivity() {
                     appVersion = BuildConfig.VERSION_NAME,
                     update = app.updater.state.collectAsState().value,
                     onCheckUpdate = { checkForUpdate() },
+                    canInstallUpdates = canInstallUpdates.value,
+                    onAllowInstalls = {
+                        runCatching { allowInstalls.launch(app.updater.permissionIntent()) }
+                    },
                     onExport = { shareExport() },
                     onImportJson = notesModel::importJson,
                     onRenameLabel = notesModel::renameLabel,

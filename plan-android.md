@@ -96,8 +96,12 @@ Cloudflare Access stays untouched.
   card thumbnails at web scale (`width*W/600`, 3:2). Verified: `:synclogic`
   tests + 3 on-emulator Compose tests (thumbnail, placeholder, draw→marker
   round trip). Requires test-runner 1.7.0 family (1.6.2 crashes on API 36).
-- Settings: device name, sign out (wipe local token), link to web device
-  list for revoke.
+- Settings (full screen since 2026-10-14, `ui/SettingsScreen.kt`):
+  sections This phone (inline name + New login with the revoke note),
+  Appearance (theme: segmented, radio rows above 1.15x font), Backup
+  (export/import, same wording as the web panel), Updates (version, last
+  check, updater state, "install unknown apps" state), Account (sign out
+  in the error colour behind a confirmation). `SettingsScreenUiTest`.
 
 ## Work plan (status: 1-4 built and verified on emulator + prod 2026-09-14)
 

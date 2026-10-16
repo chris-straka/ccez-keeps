@@ -14,6 +14,18 @@ Team domain: `silent-bread-ade3.cloudflareaccess.com`
 | `ccez-keeps-api` | `keeps.ccez.uk/api/*` (+ `ccez-keeps.chris-e69.workers.dev/api/*`) | `api-worker-gate` (**bypass**, everyone) | Lets API traffic through without an Access session; the worker does the real check. Side effect: Access never appends `Cf-Access-JWT-Assertion` on this path — that is why the worker also accepts the cookie (below). Do not "fix" this to Allow without also handling the header. |
 | `ccez-keeps-manifest` | `keeps.ccez.uk/manifest.webmanifest` | `public-manifest` (**bypass**, everyone) | Browsers fetch the manifest credentialless, so an Allow policy redirects it to login and CORS-blocks PWA installability. |
 
+## Session length
+
+`ccez-keeps` and the account's global session (Zero Trust → Settings →
+Authentication) are both `730h` (one month) since 2026-10-15; the default
+24h had the owner signing in daily. A sign-in is one click: the Cloudflare
+identity provider remembers them, so no 2FA prompt. Change them through the
+Cloudflare MCP (`/accounts/{id}/access/apps/{app}` and
+`/accounts/{id}/access/organizations`); wrangler's login can't read Access.
+Send the org a minimal PUT (`name`, `auth_domain`, `session_duration`): echoing
+the full GET back fails with `invalid_org_config`. Updating the app keeps
+its AUD.
+
 ## How the worker verifies (fail-closed)
 
 1. `Cf-Access-JWT-Assertion` header, else `CF_Authorization` session cookie

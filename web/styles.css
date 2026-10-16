@@ -273,11 +273,17 @@ button:hover {
   margin-left: 8px;
 }
 
+/* Keep-width cards, centered: the grid is never wider than its cards
+   (--cards, set by renderGrid), so a few notes sit in the middle instead
+   of at the left of empty columns. Unset --cards (no notes) = no cap. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, 240px);
+  justify-content: center;
   gap: 14px;
   align-items: start;
+  max-width: calc(var(--cards) * 254px - 14px);
+  margin: 0 auto;
 }
 
 /* Masonry (layoutMasonry): row gap moves into each child's row span. */
@@ -289,6 +295,7 @@ button:hover {
 .grid.is-list {
   grid-template-columns: minmax(0, 680px);
   justify-content: center;
+  max-width: none;
 }
 
 note-card {
@@ -617,6 +624,7 @@ note-card:focus-within .card-actions {
   .grid:not(.is-list) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 8px;
+    max-width: none;
   }
 }
 

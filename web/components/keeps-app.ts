@@ -871,6 +871,8 @@ export class KeepsApp extends HTMLElement {
     const grid = this.querySelector(".grid");
     if (!grid) return;
     grid.textContent = "";
+    if (notes.length > 0) (grid as HTMLElement).style.setProperty("--cards", String(notes.length));
+    else (grid as HTMLElement).style.removeProperty("--cards");
     const doc = this.ownerDocument;
     if (this.view === "trash" && notes.length > 0) {
       const head = doc.createElement("div");

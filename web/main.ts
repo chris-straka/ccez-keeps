@@ -1,6 +1,8 @@
 // Lane A bootstrap (+E/F): render from IndexedDB first (instant repeat
 // visits), pull in the background, Service Worker app shell, "/" focuses
 // search, boot failures render an error instead of a blank page.
+// In the Mac app (desktop/) the API goes through the app instead.
+import { installDesktop, onDesktopAccount } from "./desktop.js";
 import "./components/keeps-app.js";
 import type { KeepsApp } from "./components/keeps-app.js";
 import "./components/note-card.js";
@@ -21,6 +23,7 @@ function renderBootError(message: string): void {
 }
 
 async function main(): Promise<void> {
+  const desktop = installDesktop();
   const store = new IdbStore();
   await store.ready;
 
@@ -71,7 +74,16 @@ async function main(): Promise<void> {
     }
   });
 
-  if ("serviceWorker" in navigator) {
+  // Signed in (or out) from the browser or the app menu: converge now
+  // instead of waiting out the signed-out retry interval.
+  onDesktopAccount(() => {
+    void sync.flush();
+    void labels.flush().catch(() => {});
+  });
+
+  // The Mac app ships its shell inside the app; no Service Worker needed
+  // (and WebKit has none for the tauri:// scheme).
+  if (!desktop && "serviceWorker" in navigator) {
     try {
       await navigator.serviceWorker.register("./sw.js");
     } catch {

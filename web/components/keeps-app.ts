@@ -15,6 +15,7 @@ import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
 import { IDEAS_LABEL_NAME, isIdeasLabelName, type Label } from "../../shared/label.js";
 import { formatMarkdown, select } from "../../cli/lib.js";
+import { desktopSignIn, isDesktop } from "../desktop.js";
 
 /** Minimal sync surface the shell needs (satisfied by SyncEngine). */
 export interface SyncPort {
@@ -366,7 +367,9 @@ export class KeepsApp extends HTMLElement {
     el.classList.toggle("is-syncing", this.lastSyncStatus === "syncing");
     if (this.lastSyncStatus === "auth") {
       // A dead Access session never heals by retrying: offer the way out.
-      el.innerHTML = `Session expired — <button data-reauth>Sign in again</button>`;
+      el.innerHTML = isDesktop()
+        ? `Not signed in — <button data-reauth>Sign in with your browser</button>`
+        : `Session expired — <button data-reauth>Sign in again</button>`;
       return;
     }
     el.textContent =
@@ -387,6 +390,8 @@ export class KeepsApp extends HTMLElement {
    * best-effort — the reload is what matters.
    */
   private async reauthenticate(): Promise<void> {
+    // The Mac app signs in through the browser once, then stays signed in.
+    if (desktopSignIn()) return;
     const view = this.ownerDocument.defaultView;
     try {
       const regs = (await view?.navigator.serviceWorker?.getRegistrations()) ?? [];

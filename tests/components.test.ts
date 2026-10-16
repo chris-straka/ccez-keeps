@@ -1019,6 +1019,30 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("in the Mac app, auth status signs in through the browser instead of reloading", async () => {
+    const t = mount();
+    await t.ready;
+    const calls: string[] = [];
+    const g = globalThis as unknown as Record<string, unknown>;
+    g["__TAURI__"] = {
+      core: { invoke: async (cmd: string) => { calls.push(cmd); } },
+      event: { listen: async () => () => {} },
+    };
+    const view = t.app.ownerDocument.defaultView as unknown as { location: { reload: () => void } };
+    let reloaded = false;
+    view.location.reload = () => { reloaded = true; };
+    t.app.setSyncStatus("auth");
+    const btn = t.app.querySelector<HTMLButtonElement>(".sync-status [data-reauth]");
+    expect(t.app.querySelector(".sync-status")!.textContent).toContain("Not signed in");
+    expect(btn?.textContent).toBe("Sign in with your browser");
+    btn!.click();
+    await t.tick();
+    expect(calls).toEqual(["sign_in"]);
+    expect(reloaded).toBe(false);
+    delete g["__TAURI__"];
+    t.cleanup();
+  });
+
   test("form controls inherit the app font (bare buttons fall back to Arial)", async () => {
     const css = await Bun.file("web/styles.css").text();
     expect(css).toMatch(/button,\s*input,\s*textarea,\s*select\s*\{\s*font-family:\s*inherit;/);

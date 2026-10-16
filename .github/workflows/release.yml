@@ -128,9 +128,9 @@ jobs:
           targets: ${{ matrix.rust_target }}
       - run: bun install
       - name: Rust unit tests
+        # generate_context! embeds dist/, so the web build comes first.
         if: matrix.name == 'macos-aarch64'
-        working-directory: desktop
-        run: cargo test
+        run: bun run build && cd desktop && cargo test
       - name: Build the app, .dmg and signed updater tarball
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

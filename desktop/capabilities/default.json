@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The Keeps window: events for sign-in state; the app's own commands (api_fetch, sign_in, sign_out, account) need no entry",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

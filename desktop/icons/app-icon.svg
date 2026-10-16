@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- web/icon.svg on the macOS icon grid: an 824px tile with the
+       standard 100px margin, so the Dock shows it at the same size as
+       every other app instead of edge to edge. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#1b1c1e"/>
+  <g transform="translate(100 100) scale(1.609375)">
+    <rect x="156" y="96" width="200" height="320" rx="20" fill="none" stroke="#e8eaed" stroke-width="28"/>
+    <line x1="196" y1="176" x2="316" y2="176" stroke="#8ab4f8" stroke-width="24" stroke-linecap="round"/>
+    <line x1="196" y1="240" x2="316" y2="240" stroke="#9aa0a6" stroke-width="24" stroke-linecap="round"/>
+    <line x1="196" y1="304" x2="268" y2="304" stroke="#9aa0a6" stroke-width="24" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Keeps",
+  "version": "0.6.0",
+  "identifier": "uk.ccez.keeps",
+  "build": {
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Keeps",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 380,
+        "minHeight": 480,
+        "visible": false,
+        "backgroundColor": "#1b1c1e",
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": { "schemes": ["keeps"] }
+    },
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "endpoints": [
+        "https://github.com/chris-straka/ccez-keeps/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM0NDNGNTUyRkM5M0MxOTEKUldTUndaUDhVdlZETk9jMTVIRXJpcTliTjhmaG4zdURoOGp5ZU9QTno1MTAvclRhcXg0QkNvcSsK"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "createUpdaterArtifacts": true,
+    "category": "Productivity",
+    "shortDescription": "Keeps notes, on the Mac",
+    "longDescription": "Keeps (keeps.ccez.uk) as its own Mac app: local-first notes that sync with the web and Android apps.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

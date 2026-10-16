@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",
+    "@tauri-apps/cli": "^2.11.4",
     "bun-types": "^1.4.2",
     "drizzle-kit": "^0.31.10",
     "fake-indexeddb": "^6.2.5",

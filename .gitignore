@@ -15,3 +15,6 @@ local.properties
 *.aab
 *.jks
 .env
+# Desktop (Tauri): build output and generated schemas
+desktop/target/
+desktop/gen/

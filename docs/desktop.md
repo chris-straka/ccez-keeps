@@ -89,3 +89,8 @@ code into `enroll_codes`), launch the app with `KEEPS_SNAPSHOT`, then
 `open "keeps://enroll?code=<code>"`. That runs the real deep link and
 exchange; only the browser's Access login is skipped. The snapshot shows
 the synced notes. Revoke the test device afterwards in the Devices panel.
+
+The updater was proven the same way: the 0.6.0 test build, started with
+`KEEPS_START_HIDDEN=1` (window closed), found v0.6.1's `latest.json`,
+installed it over itself in ~6 s, relaunched into the Dock, and the
+updated app still passed `codesign --verify` and opened signed in.

@@ -5,6 +5,15 @@ name: release
 # app finds, verifies and installs it by itself (android/.../update/);
 # the Releases page is only needed for the first install.
 #
+# From v0.6.0 the same release carries the Mac app (desktop/, Tauri):
+# per-arch .dmgs, the updater tarballs with their .sig, and latest.json,
+# which the installed app polls (desktop/src/update.rs). The tag is the
+# version for both apps: the Mac legs pass it to `tauri build --config`.
+# Updater signing (Mac): TAURI_SIGNING_PRIVATE_KEY (~/.tauri/keeps.key on
+# y8) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD; the public half is
+# plugins.updater.pubkey in desktop/tauri.conf.json. The .app is ad-hoc
+# signed (no Apple account), like ccez-llm (docs/desktop.md).
+#
 # One-time setup before the first release (repo Settings -> Secrets ->
 # Actions), optional but recommended so updates install over each other
 # (`keytool -genkey -v -keystore ~/keeps-upload.jks -keyalg RSA
@@ -95,11 +104,56 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-  # Serial tail: the SOLE writer to the release. Runs only after the
-  # builder is green, renames the APK, attaches it to a draft, verifies
-  # the draft, then publishes it.
+  # Mac app legs, parallel to the APK build. Read-only like it: bundles
+  # leave as workflow artifacts and only the tail job touches the release.
+  build-macos:
+    needs: [test-web]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            rust_target: aarch64-apple-darwin
+          - name: macos-x86_64
+            rust_target: x86_64-apple-darwin
+    name: build (${{ matrix.name }})
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - run: bun install
+      - name: Rust unit tests
+        if: matrix.name == 'macos-aarch64'
+        working-directory: desktop
+        run: cargo test
+      - name: Build the app, .dmg and signed updater tarball
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          bunx tauri build --target ${{ matrix.rust_target }} --config "{\"version\":\"$VERSION\"}"
+      - name: Upload bundles as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.name }}
+          path: |
+            desktop/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
+            desktop/target/${{ matrix.rust_target }}/release/bundle/macos/*.app.tar.gz
+            desktop/target/${{ matrix.rust_target }}/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+
+  # Serial tail: the SOLE writer to the release. Runs only after every
+  # builder is green, renames the bundles, writes the Mac updater
+  # manifest, attaches everything to a draft, verifies the draft, then
+  # publishes it.
   release:
-    needs: [build]
+    needs: [build, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +164,11 @@ jobs:
         with:
           name: apk
           path: bundles
+      - name: Download Mac bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-macos-*
+          path: mac
       - name: Rename APK for the release page
         run: |
           mkdir -p release-assets
@@ -117,8 +176,51 @@ jobs:
           # The app's self-updater checks the APK against this before
           # installing (as well as GitHub's own asset digest).
           (cd release-assets && sha256sum "Keeps-android-${GITHUB_REF_NAME}.apk" > "Keeps-android-${GITHUB_REF_NAME}.apk.sha256")
-          ls -la release-assets/
           cat release-assets/*.sha256
+      - name: Rename Mac bundles and write the updater manifest
+        # latest.json points at public releases/download URLs (the
+        # ccez-llm lesson: API asset URLs 404 for the updater) and carries
+        # each tarball's .sig contents. Fails on any missing file.
+        run: |
+          python3 - mac release-assets "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" <<'EOF'
+          import datetime, glob, json, os, shutil, sys
+
+          src, dest, ref, repo = sys.argv[1:5]
+          legs = {"macos-aarch64": "apple-silicon", "macos-x86_64": "intel"}
+          keys = {"apple-silicon": ["darwin-aarch64", "darwin-aarch64-app"],
+                  "intel": ["darwin-x86_64", "darwin-x86_64-app"]}
+
+          def one(pattern):
+              found = glob.glob(pattern, recursive=True)
+              if len(found) != 1:
+                  sys.exit(f"MISSING or ambiguous: {pattern} -> {found}")
+              return found[0]
+
+          dl = f"https://github.com/{repo}/releases/download/{ref}"
+          platforms = {}
+          for leg, arch in legs.items():
+              base = f"{src}/bundle-{leg}"
+              dmg = one(f"{base}/**/*.dmg")
+              tar = one(f"{base}/**/*.app.tar.gz")
+              sig = one(f"{base}/**/*.app.tar.gz.sig")
+              shutil.copyfile(dmg, f"{dest}/Keeps-macos-{arch}.dmg")
+              shutil.copyfile(tar, f"{dest}/Keeps-macos-{arch}.app.tar.gz")
+              shutil.copyfile(sig, f"{dest}/Keeps-macos-{arch}.app.tar.gz.sig")
+              entry = {"signature": open(sig).read().strip(),
+                       "url": f"{dl}/Keeps-macos-{arch}.app.tar.gz"}
+              for key in keys[arch]:
+                  platforms[key] = entry
+          manifest = {
+              "version": ref[1:] if ref.startswith("v") else ref,
+              "notes": "",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+              "platforms": platforms,
+          }
+          with open(f"{dest}/latest.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          print("manifest platforms:", ", ".join(sorted(platforms)))
+          EOF
+          ls -la release-assets/
       - name: Create draft and attach APK (sole release writer)
         uses: softprops/action-gh-release@v2
         with:
@@ -131,17 +233,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSET="Keeps-android-${GITHUB_REF_NAME}.apk"
+          WANT="Keeps-android-${GITHUB_REF_NAME}.apk
+          Keeps-macos-apple-silicon.dmg
+          Keeps-macos-apple-silicon.app.tar.gz
+          Keeps-macos-apple-silicon.app.tar.gz.sig
+          Keeps-macos-intel.dmg
+          Keeps-macos-intel.app.tar.gz
+          Keeps-macos-intel.app.tar.gz.sig
+          latest.json"
           for i in 1 2 3; do
-            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null | grep -qxF "$ASSET"; then
+            HAVE="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+            missing=""
+            for f in $WANT; do
+              echo "$HAVE" | grep -qxF "$f" || missing="$missing $f"
+            done
+            if [ -z "$missing" ]; then
               gh release edit "$GITHUB_REF_NAME" --draft=false
               test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = "false"
               exit 0
             fi
-            echo "asset not visible yet (attempt $i/3), retrying in 15s..."
+            echo "not visible yet:$missing (attempt $i/3), retrying in 15s..."
             sleep 15
           done
-          echo "MISSING: $ASSET"
+          echo "MISSING:$missing"
           exit 1
 
   # Tidiness: once the release above is verified, delete every older

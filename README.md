@@ -165,3 +165,18 @@ Native Kotlin app, same sync contract. See [plan-android.md](plan-android.md).
   measured; virtualization stays deferred unless this regresses).
 - Install icons: `web/icon-192.png`, `web/icon-512.png` (rendered from
   `web/icon.svg`).
+
+## Mac app (`desktop/`)
+
+Tauri 2 app around the same web build, so Keeps keeps running when the
+browser quits: own Dock icon and window (closing hides it, Cmd+Q quits),
+remembered window, offline from its bundled shell and IndexedDB, synced
+with its own device token. First launch: "Sign in with your browser" opens
+`/api/devices/code?to=keeps://enroll` once and the app exchanges the code
+like Android does. Self-updates from the GitHub release (`latest.json`).
+See [docs/desktop.md](docs/desktop.md).
+
+```sh
+bunx tauri build --bundles app   # Keeps.app
+cd desktop && cargo test
+```

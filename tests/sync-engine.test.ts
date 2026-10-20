@@ -483,6 +483,46 @@ describe("SyncEngine", () => {
     engine.destroy();
   });
 
+  test("returning to the page pulls (other devices' edits land without a reload)", async () => {
+    const { requests, fetchFn } = makeServer();
+    const store = new MemoryStore();
+    const g = globalThis as unknown as Record<string, unknown>;
+    const savedDocument = g["document"];
+    const savedWindow = g["window"];
+    const docHandlers: Record<string, () => void> = {};
+    const winHandlers: Record<string, () => void> = {};
+    g["document"] = {
+      visibilityState: "visible",
+      addEventListener: (type: string, fn: () => void) => {
+        docHandlers[type] = fn;
+      },
+      removeEventListener: () => {},
+    };
+    g["window"] = {
+      addEventListener: (type: string, fn: () => void) => {
+        winHandlers[type] = fn;
+      },
+      removeEventListener: () => {},
+    };
+    try {
+      const engine = new SyncEngine(store, { fetchFn, online: () => true });
+      docHandlers["visibilitychange"]!();
+      await engine.flush();
+      const afterShow = requests.length;
+      expect(requests.some((r) => r.path.startsWith("/api/notes") && r.method === "GET")).toBe(true);
+      winHandlers["focus"]!();
+      await engine.flush();
+      expect(requests.length).toBeGreaterThan(afterShow);
+      expect(requests.every((r) => r.keepalive !== true)).toBe(true);
+      engine.destroy();
+    } finally {
+      if (savedDocument === undefined) delete g["document"];
+      else g["document"] = savedDocument;
+      if (savedWindow === undefined) delete g["window"];
+      else g["window"] = savedWindow;
+    }
+  });
+
   test("hiding the page triggers a keepalive flush (close-time edits upload)", async () => {
     const { requests, fetchFn } = makeServer();
     const store = new MemoryStore();

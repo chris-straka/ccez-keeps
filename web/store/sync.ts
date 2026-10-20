@@ -91,6 +91,7 @@ export class SyncEngine {
   private onlineHandler: (() => void) | undefined;
   private hideHandler: (() => void) | undefined;
   private pageHideHandler: (() => void) | undefined;
+  private focusHandler: (() => void) | undefined;
 
   constructor(
     private readonly store: Store,
@@ -107,9 +108,12 @@ export class SyncEngine {
     }
     if (typeof document !== "undefined") {
       // Tab hidden (switch, minimize, close): push now — the page may be
-      // gone before the debounced flush runs.
+      // gone before the debounced flush runs. Shown again: pull, so
+      // edits from other devices (the phone, the keeps CLI) land without
+      // a reload.
       this.hideHandler = () => {
         if (document.visibilityState === "hidden") void this.flush({ keepalive: true });
+        else void this.flush();
       };
       document.addEventListener("visibilitychange", this.hideHandler);
     }
@@ -121,6 +125,12 @@ export class SyncEngine {
         void this.flush({ keepalive: true });
       };
       window.addEventListener("pagehide", this.pageHideHandler);
+      // Switching back to a window that never hid (the Mac app behind
+      // another app) fires focus, not visibilitychange.
+      this.focusHandler = () => {
+        void this.flush();
+      };
+      window.addEventListener("focus", this.focusHandler);
     }
   }
 
@@ -135,6 +145,9 @@ export class SyncEngine {
     }
     if (typeof document !== "undefined" && this.hideHandler) {
       document.removeEventListener("visibilitychange", this.hideHandler);
+    }
+    if (typeof window !== "undefined" && this.focusHandler) {
+      window.removeEventListener("focus", this.focusHandler);
     }
     if (typeof window !== "undefined" && this.pageHideHandler) {
       window.removeEventListener("pagehide", this.pageHideHandler);

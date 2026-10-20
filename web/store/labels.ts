@@ -46,15 +46,20 @@ export class LabelsStore {
     // re-pushes it (push sends all rows, idempotent).
     this.rows = loadPersisted();
     // Page-lifetime listeners (never removed): push on hide/close so a
-    // label edit made seconds before leaving still uploads.
+    // label edit made seconds before leaving still uploads, and pull on
+    // return so other devices' labels show without a reload.
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") void this.flush({ keepalive: true }).catch(() => {});
+        else void this.flush().catch(() => {});
       });
     }
     if (typeof window !== "undefined") {
       window.addEventListener("pagehide", () => {
         void this.flush({ keepalive: true }).catch(() => {});
+      });
+      window.addEventListener("focus", () => {
+        void this.flush().catch(() => {});
       });
     }
   }

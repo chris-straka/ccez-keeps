@@ -225,16 +225,6 @@ fun NoteDialog(
         } catch (_: IllegalStateException) {
         }
     }
-    LaunchedEffect(Unit) {
-        try {
-            if (startInBody && (initialChecklist == null || initialChecklist.isNotEmpty())) {
-                bodyFocus.requestFocus()
-            } else {
-                focusRequester.requestFocus()
-            }
-        } catch (_: IllegalStateException) {
-        }
-    }
     // Undo history over body text (mirrors the web editor's snapshot
     // history; title stays a plain field on both clients).
     val history = remember { mutableListOf(initialBody) }
@@ -384,6 +374,18 @@ fun NoteDialog(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 10.dp, vertical = 10.dp),
         ) {
+            // Runs in the dialog's own composition: from the caller's,
+            // it fired before the fields were attached and focused nothing.
+            LaunchedEffect(Unit) {
+                try {
+                    if (startInBody && (initialChecklist == null || initialChecklist.isNotEmpty())) {
+                        bodyFocus.requestFocus()
+                    } else {
+                        focusRequester.requestFocus()
+                    }
+                } catch (_: IllegalStateException) {
+                }
+            }
             Card(
                 colors = CardDefaults.cardColors(containerColor = cardColor),
                 shape = RoundedCornerShape(16.dp),

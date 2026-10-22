@@ -325,6 +325,8 @@ fun NotesScreen(
     val context = LocalContext.current
     val dark = themeDark(theme)
     var settingsOpen by remember { mutableStateOf(false) }
+    /** The open note was tapped on its title (caret there), not its body. */
+    var editAtTitle by remember { mutableStateOf(false) }
     // Label being renamed/deleted via drawer long-press; null hides.
     var labelDialog by remember { mutableStateOf<Label?>(null) }
     // The search field used to keep focus (and the keyboard) through taps
@@ -637,7 +639,14 @@ fun NotesScreen(
                                     filter = state.filter,
                                     dark = dark,
                                     modifier = modifier,
-                                    onOpen = { onOpenEditor(note) },
+                                    onOpen = {
+                                        editAtTitle = false
+                                        onOpenEditor(note)
+                                    },
+                                    onOpenTitle = {
+                                        editAtTitle = true
+                                        onOpenEditor(note)
+                                    },
                                     onPin = {
                                         haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         onPin(note)
@@ -737,6 +746,7 @@ fun NotesScreen(
                 initialRepeat = note.repeat,
                 initialChecklist = note.checklist,
                 initialAttachments = note.attachments,
+                startInBody = !editAtTitle,
                 allLabels = state.labels,
                 onCreateLabel = onCreateLabel,
                 onDismiss = onCloseEditor,
@@ -1093,6 +1103,8 @@ private fun NoteCard(
     dark: Boolean = true,
     modifier: Modifier = Modifier,
     onOpen: () -> Unit,
+    /** Tap on the card's title: opens with the caret in the title. */
+    onOpenTitle: () -> Unit = onOpen,
     onPin: () -> Unit,
     onArchive: () -> Unit,
     onTrash: () -> Unit,
@@ -1124,7 +1136,11 @@ private fun NoteCard(
         // the next layout pass).
         Column(Modifier.padding(12.dp)) {
             if (note.title.isNotBlank()) {
-                Text(note.title, fontWeight = FontWeight.Bold)
+                Text(
+                    note.title,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenTitle),
+                )
                 Spacer(Modifier.height(4.dp))
             }
             AttachmentStrip(note.attachments)
@@ -1216,6 +1232,9 @@ fun NoteDialog(
     initialRepeat: String? = null,
     initialChecklist: List<ChecklistItem>? = null,
     initialAttachments: List<Attachment> = emptyList(),
+    /** Open with the caret at the end of the body (a tap on an existing
+     * note's body) instead of in the title (a new note, or a title tap). */
+    startInBody: Boolean = false,
     allLabels: List<Label> = emptyList(),
     onCreateLabel: (String, (Label) -> Unit) -> Unit = { _, _ -> },
     /** Composer opened from the Reminders filter starts with the date picker open. */
@@ -1227,8 +1246,9 @@ fun NoteDialog(
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
+    val bodyFocus = remember { FocusRequester() }
     var t by remember { mutableStateOf(initialTitle) }
-    var b by remember { mutableStateOf(TextFieldValue(initialBody)) }
+    var b by remember { mutableStateOf(TextFieldValue(initialBody, TextRange(initialBody.length))) }
     var c by remember { mutableStateOf(initialColor) }
     val selIds = remember { mutableStateListOf(*initialLabelIds.toTypedArray()) }
     var reminder by remember { mutableStateOf(initialReminderAt) }
@@ -1295,10 +1315,21 @@ fun NoteDialog(
             }
         }
     }
-    // Best effort: headless harnesses may have nothing to take focus.
+    // Best effort: headless harnesses may have nothing to take focus,
+    // and an empty checklist has no first row to take the body's.
+    fun focusBody() {
+        try {
+            bodyFocus.requestFocus()
+        } catch (_: IllegalStateException) {
+        }
+    }
     LaunchedEffect(Unit) {
         try {
-            focusRequester.requestFocus()
+            if (startInBody && (initialChecklist == null || initialChecklist.isNotEmpty())) {
+                bodyFocus.requestFocus()
+            } else {
+                focusRequester.requestFocus()
+            }
         } catch (_: IllegalStateException) {
         }
     }
@@ -1518,6 +1549,9 @@ fun NoteDialog(
                             placeholder = { Text("Title", style = MaterialTheme.typography.titleLarge) },
                             textStyle = MaterialTheme.typography.titleLarge,
                             singleLine = true,
+                            // Enter moves on to the body, as on the web.
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { focusBody() }),
                             colors = plainField,
                             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                                 .testTag("editorTitle"),
@@ -1530,7 +1564,8 @@ fun NoteDialog(
                                 placeholder = { Text("Note") },
                                 minLines = 4,
                                 colors = plainField,
-                                modifier = Modifier.fillMaxWidth().testTag("editorBody"),
+                                modifier = Modifier.fillMaxWidth().focusRequester(bodyFocus)
+                                    .testTag("editorBody"),
                             )
                         } else {
                             Column {
@@ -1554,7 +1589,13 @@ fun NoteDialog(
                                             placeholder = { Text("List item") },
                                             singleLine = true,
                                             colors = plainField,
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.weight(1f).then(
+                                                if (item.id == rows.first().id) {
+                                                    Modifier.focusRequester(bodyFocus)
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ),
                                         )
                                         IconButton(onClick = {
                                             items = rows.filter { it.id != item.id }

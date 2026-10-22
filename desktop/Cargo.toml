@@ -1,6 +1,6 @@
 [package]
 name = "keeps-desktop"
-version = "0.6.2"
+version = "0.6.3"
 description = "Keeps as its own Mac app"
 authors = ["ccez"]
 edition = "2021"

@@ -4,11 +4,11 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,7 +95,20 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
+import android.net.Uri
+import androidx.compose.foundation.content.MediaType
+import androidx.compose.foundation.content.consume
+import androidx.compose.foundation.content.contentReceiver
+import androidx.compose.foundation.content.hasMediaType
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -121,7 +134,7 @@ import java.util.UUID
 
 // Public for the drawing round-trip instrumented test; the app only uses
 // it through NotesScreen.
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteDialog(
     title: String,
@@ -149,8 +162,15 @@ fun NoteDialog(
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
-    var t by remember { mutableStateOf(initialTitle) }
-    var b by remember { mutableStateOf(TextFieldValue(initialBody, TextRange(initialBody.length))) }
+    // State-based fields: only these take pasted images (contentReceiver).
+    val titleState = rememberTextFieldState(initialTitle)
+    val bodyState = rememberTextFieldState(initialBody, TextRange(initialBody.length))
+    fun setBody(text: String, selection: TextRange = TextRange(text.length)) {
+        bodyState.edit {
+            replace(0, length, text)
+            this.selection = selection
+        }
+    }
     var c by remember { mutableStateOf(initialColor) }
     val selIds = remember { mutableStateListOf(*initialLabelIds.toTypedArray()) }
     var reminder by remember { mutableStateOf(initialReminderAt) }
@@ -168,31 +188,48 @@ fun NoteDialog(
     var attachError by remember { mutableStateOf<String?>(null) }
     var viewing by remember { mutableStateOf<Attachment?>(null) }
     val scope = rememberCoroutineScope()
-    val photoPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(NoteLimits.MAX_ATTACHMENTS),
-    ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    // Picked or pasted images: read now (a pasted uri's grant can end
+    // with the paste), downscale off the main thread, then stage.
+    fun attachUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
         attachError = null
-        scope.launch(Dispatchers.IO) {
-            val fresh = mutableListOf<Attachment>()
-            for (uri in uris) {
-                if (staged.size + fresh.size >= NoteLimits.MAX_ATTACHMENTS) break
-                val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+        val read = uris.take(NoteLimits.MAX_ATTACHMENTS - staged.size).mapNotNull { uri ->
+            val name = runCatching {
+                context.contentResolver.query(uri, null, null, null, null)?.use { c ->
                     val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                     if (c.moveToFirst() && idx >= 0) c.getString(idx) else null
-                } ?: "photo.jpg"
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: continue
-                processImageBytes(bytes, name)?.let { fresh.add(it) }
-            }
+                }
+            }.getOrNull() ?: "photo.jpg"
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }.getOrNull()?.let { name to it }
+        }
+        scope.launch(Dispatchers.IO) {
+            val fresh = read.mapNotNull { (name, bytes) -> processImageBytes(bytes, name) }
             withContext(Dispatchers.Main) {
                 if (fresh.isEmpty()) {
                     attachError = "Those photos could not be read or are too large."
                 } else {
-                    staged.addAll(fresh)
+                    staged.addAll(fresh.take(NoteLimits.MAX_ATTACHMENTS - staged.size))
                 }
             }
         }
+    }
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(NoteLimits.MAX_ATTACHMENTS),
+    ) { uris -> attachUris(uris) }
+    // A pasted image (keyboard clipboard, or a copied screenshot) in the
+    // title or body becomes an attachment; any text in the paste stays.
+    val receiveImages = Modifier.contentReceiver { content ->
+        if (!content.hasMediaType(MediaType.Image)) return@contentReceiver content
+        val uris = mutableListOf<Uri>()
+        val rest = content.consume { item ->
+            val uri = item.uri
+            if (uri != null) uris.add(uri)
+            uri != null
+        }
+        attachUris(uris)
+        rest
     }
     // toChecklistMode + save helpers live below toggleList (they use pushHist).
     // POST_NOTIFICATIONS is asked at reminder-set time; a denial only
@@ -230,51 +267,57 @@ fun NoteDialog(
     val history = remember { mutableListOf(initialBody) }
     var histIdx by remember { mutableStateOf(0) }
     fun pushHist(text: String) {
+        // Undo/redo land the field on history[histIdx]: no new step.
+        if (history[histIdx] == text) return
         while (history.size > histIdx + 1) history.removeAt(history.size - 1)
-        if (history[histIdx] != text) {
-            history.add(text)
-            while (history.size > 100) history.removeAt(0)
-            histIdx = history.size - 1
-        }
+        history.add(text)
+        while (history.size > 100) history.removeAt(0)
+        histIdx = history.size - 1
+    }
+    // Typing records a step; programmatic edits push their own.
+    LaunchedEffect(bodyState) {
+        snapshotFlow { bodyState.text.toString() }.collect { pushHist(it) }
     }
     fun undo() {
         if (histIdx > 0) {
             histIdx--
-            val text = history[histIdx]
-            b = TextFieldValue(text, TextRange(text.length))
+            setBody(history[histIdx])
         }
     }
     fun redo() {
         if (histIdx < history.size - 1) {
             histIdx++
-            val text = history[histIdx]
-            b = TextFieldValue(text, TextRange(text.length))
+            setBody(history[histIdx])
         }
     }
     fun wrapSelection(before: String, after: String) {
-        val start = b.selection.start
-        val end = b.selection.end
-        val selected = b.text.substring(start, end)
-        val out = b.text.substring(0, start) + before + selected + after + b.text.substring(end)
-        b = if (selected.isEmpty()) {
-            TextFieldValue(out, TextRange(start + before.length))
-        } else {
-            TextFieldValue(out, TextRange(start, start + before.length + selected.length + after.length))
-        }
+        val text = bodyState.text.toString()
+        val start = bodyState.selection.min
+        val end = bodyState.selection.max
+        val selected = text.substring(start, end)
+        val out = text.substring(0, start) + before + selected + after + text.substring(end)
+        setBody(
+            out,
+            if (selected.isEmpty()) {
+                TextRange(start + before.length)
+            } else {
+                TextRange(start, start + before.length + selected.length + after.length)
+            },
+        )
         pushHist(out)
     }
     var drawOpen by remember { mutableStateOf(false) }
     fun insertDrawing(id: String, strokes: List<DrawingStroke>) {
         onSaveDrawing(id, strokes)
-        val cur = b.text
+        val cur = bodyState.text.toString()
         val prefix = if (cur.isEmpty() || cur.endsWith("\n")) cur else "$cur\n"
         val out = "$prefix![drawing]($id)"
-        b = TextFieldValue(out, TextRange(out.length))
+        setBody(out)
         pushHist(out)
     }
     fun toggleList() {
-        val text = b.text
-        val caret = b.selection.start
+        val text = bodyState.text.toString()
+        val caret = bodyState.selection.start
         val ls = text.lastIndexOf('\n', caret - 1) + 1
         val le = text.indexOf('\n', caret).let { if (it == -1) text.length else it }
         val line = text.substring(ls, le)
@@ -284,18 +327,18 @@ fun NoteDialog(
             else -> "- [ ] $line"
         }
         val out = text.substring(0, ls) + next + text.substring(le)
-        b = TextFieldValue(out, TextRange(ls + next.length))
+        setBody(out, TextRange(ls + next.length))
         pushHist(out)
     }
     fun toChecklistMode() {
         if (items != null) {
             val body = items.orEmpty().joinToString("\n") { it.text }
             items = null
-            b = TextFieldValue(body, TextRange(body.length))
+            setBody(body)
             pushHist(body)
             return
         }
-        val lines = b.text.split("\n")
+        val lines = bodyState.text.toString().split("\n")
             .map { it.replace(Regex("^\\s*-\\s*\\[( |x)\\]\\s*"), "").trimEnd() }
         val kept = lines.filter { it.isNotBlank() }
         items = (if (kept.isNotEmpty()) kept else listOf("")).map {
@@ -307,10 +350,11 @@ fun NoteDialog(
             ?.take(NoteLimits.MAX_CHECKLIST_ITEMS)
             ?.map { it.copy(text = it.text.take(NoteLimits.MAX_CHECKLIST_TEXT)) }
     fun bodyForSave(): String =
-        checklistForSave()?.joinToString("\n") { it.text } ?: b.text
+        checklistForSave()?.joinToString("\n") { it.text } ?: bodyState.text.toString()
     // Back / tap-outside keep the draft like Keep does; only Cancel discards.
     // Unchanged notes just close, so reopening never bumps updatedAt.
     fun closeKeeping() {
+        val t = titleState.text.toString()
         val changed = t != initialTitle || bodyForSave() != initialBody ||
             c != initialColor || selIds.toList() != initialLabelIds ||
             reminder != initialReminderAt || repeatSel != initialRepeat ||
@@ -391,13 +435,10 @@ fun NoteDialog(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxSize().testTag("editorCard"),
             ) {
-                Column(Modifier.fillMaxSize()) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 20.dp, top = 12.dp),
-                    )
+                // No heading on the sheet: what it is shows in the fields
+                // themselves. The title stays for accessibility.
+                Column(Modifier.fillMaxSize().semantics { paneTitle = title }) {
+                    Spacer(Modifier.height(8.dp))
                     Column(
                         modifier = Modifier.weight(1f)
                             .verticalScroll(rememberScrollState())
@@ -447,28 +488,27 @@ fun NoteDialog(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                             )
                         }
-                        TextField(
-                            value = t,
-                            onValueChange = { t = it },
-                            placeholder = { Text("Title", style = MaterialTheme.typography.titleLarge) },
+                        PlainField(
+                            state = titleState,
+                            placeholder = "Title",
                             textStyle = MaterialTheme.typography.titleLarge,
-                            singleLine = true,
+                            lineLimits = TextFieldLineLimits.SingleLine,
                             // Enter moves on to the body, as on the web.
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            keyboardActions = KeyboardActions(onNext = { focusBody() }),
-                            colors = plainField,
+                            onKeyboardAction = { focusBody() },
                             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                                .then(receiveImages)
                                 .testTag("editorTitle"),
                         )
                         val rows = items
                         if (rows == null) {
-                            TextField(
-                                value = b,
-                                onValueChange = { b = it; pushHist(it.text) },
-                                placeholder = { Text("Note") },
-                                minLines = 4,
-                                colors = plainField,
+                            PlainField(
+                                state = bodyState,
+                                placeholder = "Note",
+                                textStyle = MaterialTheme.typography.bodyLarge,
+                                lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 4),
                                 modifier = Modifier.fillMaxWidth().focusRequester(bodyFocus)
+                                    .then(receiveImages)
                                     .testTag("editorBody"),
                             )
                         } else {
@@ -736,7 +776,8 @@ fun NoteDialog(
                         Button(onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                             onConfirm(
-                                t, bodyForSave(), c, selIds.toList(), reminder, repeatSel,
+                                titleState.text.toString(), bodyForSave(), c, selIds.toList(),
+                                reminder, repeatSel,
                                 checklistForSave(), staged.toList(),
                             )
                         }) { Text("Save") }
@@ -826,4 +867,37 @@ fun NoteDialog(
             },
         )
     }
+}
+
+/** A borderless text field over a [TextFieldState] (the material
+ * TextField's look: 16dp padding, grey placeholder). State-based so it
+ * can take pasted images through contentReceiver. */
+@Composable
+private fun PlainField(
+    state: TextFieldState,
+    placeholder: String,
+    textStyle: TextStyle,
+    lineLimits: TextFieldLineLimits,
+    modifier: Modifier = Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    onKeyboardAction: (() -> Unit)? = null,
+) {
+    val color = MaterialTheme.colorScheme.onSurface
+    BasicTextField(
+        state = state,
+        textStyle = textStyle.copy(color = color),
+        lineLimits = lineLimits,
+        keyboardOptions = keyboardOptions,
+        onKeyboardAction = onKeyboardAction?.let { run -> KeyboardActionHandler { run() } },
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        modifier = modifier,
+        decorator = { inner ->
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                if (state.text.isEmpty()) {
+                    Text(placeholder, style = textStyle, color = color.copy(alpha = 0.5f))
+                }
+                inner()
+            }
+        },
+    )
 }

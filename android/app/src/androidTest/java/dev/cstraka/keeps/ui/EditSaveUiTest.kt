@@ -72,7 +72,7 @@ class EditSaveUiTest {
                 compose.onAllNodesWithText("milk").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText("milk").performClick()
-            compose.onNodeWithText("Edit note").assertIsDisplayed()
+            compose.onNodeWithTag("editorCard").assertIsDisplayed()
 
             compose.onNodeWithTag("editorTitle").performTextClearance()
             compose.onNodeWithTag("editorTitle").performTextInput("Groceries (Sat)")

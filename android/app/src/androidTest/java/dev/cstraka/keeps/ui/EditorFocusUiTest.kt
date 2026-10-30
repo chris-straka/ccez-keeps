@@ -1,5 +1,6 @@
 package dev.cstraka.keeps.ui
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -78,7 +79,7 @@ class EditorFocusUiTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForSeed()
             compose.onNodeWithText("milk").performClick()
-            compose.onNodeWithText("Edit note").assertExists()
+            compose.onNodeWithTag("editorCard").assertIsDisplayed()
             compose.onNodeWithTag("editorBody").assertIsFocused()
         }
     }
@@ -88,7 +89,7 @@ class EditorFocusUiTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForSeed()
             compose.onNodeWithText("Groceries").performClick()
-            compose.onNodeWithText("Edit note").assertExists()
+            compose.onNodeWithTag("editorCard").assertIsDisplayed()
             compose.onNodeWithTag("editorTitle").assertIsFocused()
         }
     }

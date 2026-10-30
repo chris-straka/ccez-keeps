@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -87,14 +88,16 @@ class ListGridViewUiTest {
     @Test
     fun composer_inRemindersStartsWithDatePicker() {
         screen(NotesUiState(filter = NoteFilter.REMINDERS), composerOpen = true)
-        compose.onNodeWithText("Take a note…").assertIsDisplayed()
+        compose.onNodeWithTag("editorCard").assertIsDisplayed()
+        // The sheet has no heading line.
+        compose.onAllNodesWithText("Take a note…").assertCountEquals(0)
         compose.onNodeWithText("Next").assertIsDisplayed()
     }
 
     @Test
     fun composer_inNotesStartsWithoutDatePicker() {
         screen(NotesUiState(filter = NoteFilter.NOTES), composerOpen = true)
-        compose.onNodeWithText("Take a note…").assertIsDisplayed()
+        compose.onNodeWithTag("editorCard").assertIsDisplayed()
         compose.onAllNodesWithText("Next").assertCountEquals(0)
     }
 

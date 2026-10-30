@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -206,14 +207,24 @@ internal fun NoteCard(
     val attached = remember(note.labelIds, labels) {
         note.labelIds.mapNotNull { id -> labels.firstOrNull { it.id == id } }
     }
+    val dragTile = noteColor(note.color, dark).copy(alpha = 0.85f)
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
             .background(noteColor(note.color, dark))
             // Long-press starts a system drag (the node detects it and
             // calls this factory for the payload; the drop bar appears via
-            // onDragStart). Plain tap still opens the editor below.
-            .dragAndDropSource(transferData = {
+            // onDragStart). Plain tap still opens the editor below. The
+            // drag shadow is drawn here, a plain tile in the note's colour:
+            // the default one records the card into a layer, and cards the
+            // grid reused after a scroll came back drawing only their
+            // background (owner, 2026-10-30).
+            .dragAndDropSource(drawDragDecoration = {
+                drawRoundRect(
+                    color = dragTile,
+                    cornerRadius = CornerRadius(12.dp.toPx()),
+                )
+            }, transferData = {
                 onDragStart(note)
                 DragAndDropTransferData(
                     ClipData.newPlainText("Keeps note", note.id),

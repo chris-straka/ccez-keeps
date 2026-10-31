@@ -9,7 +9,7 @@ import { escapeHtml } from "./html.js";
 import { buzz } from "./haptics.js";
 import { clipboardImages } from "./images.js";
 import { DevicesClient, type DeviceInfo } from "./devices.js";
-import type { LabelOption, NoteDraft, NoteEditor } from "./note-editor.js";
+import { fitBody, type LabelOption, type NoteDraft, type NoteEditor } from "./note-editor.js";
 import type { DrawingDraft } from "./drawing-dialog.js";
 import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
@@ -611,7 +611,10 @@ export class KeepsApp extends HTMLElement {
       const title = this.querySelector<HTMLInputElement>(".composer-title");
       const body = this.querySelector<HTMLTextAreaElement>(".composer-body");
       if (title) title.value = stash.composer.title;
-      if (body) body.value = stash.composer.body;
+      if (body) {
+        body.value = stash.composer.body;
+        fitBody(body);
+      }
     }
   }
 
@@ -1413,6 +1416,8 @@ export class KeepsApp extends HTMLElement {
       this.query = (target as HTMLInputElement).value;
       void this.refreshGridOnly();
     }
+    // The composer grows with its note, like the editor, instead of scrolling a few lines.
+    if (target.classList.contains("composer-body")) fitBody(target as HTMLTextAreaElement);
   }
 
   private async refreshGridOnly(): Promise<void> {

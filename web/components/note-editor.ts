@@ -85,7 +85,7 @@ function reminderLabel(ms: number): string {
 }
 
 /** Grow the body to its content like Keep (CSS max-height caps it). */
-function fitBody(el: HTMLTextAreaElement): void {
+export function fitBody(el: HTMLTextAreaElement): void {
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight + 2}px`;
 }

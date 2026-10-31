@@ -529,6 +529,20 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("the composer grows with its note instead of scrolling a few lines", async () => {
+    const t = mount();
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
+    await t.tick();
+    const body = t.app.querySelector<HTMLTextAreaElement>(".composer-body")!;
+    // No layout here: the text's height is stubbed.
+    Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => 400 });
+    body.value = "a long note";
+    body.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    expect(body.style.height).toBe("402px");
+    t.cleanup();
+  });
+
   test("Cmd+Enter in the composer saves the new note", async () => {
     const t = mount();
     await t.ready;

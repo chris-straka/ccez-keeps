@@ -100,7 +100,8 @@ class DrawingUiTest {
                 onSaveDrawing = { id, s -> savedId = id; savedStrokes = s },
             )
         }
-        compose.onNodeWithContentDescription("Draw").performClick()
+        compose.onNodeWithContentDescription("Reminder, labels, drawing").performClick()
+        compose.onNodeWithText("Drawing").performClick()
         compose.onNodeWithTag("draw-canvas").performTouchInput { swipeUp() }
         compose.onNodeWithTag("drawing-save").performClick()
 
@@ -156,9 +157,9 @@ class DrawingUiTest {
                 onSaveDrawing = { _, _ -> },
             )
         }
-        // Reminder and labels live in the + menu; Labels opens the picker,
+        // Reminder and labels live in the ⋮ menu; Labels opens the picker,
         // which lists existing labels with a create field.
-        compose.onNodeWithContentDescription("Add").performClick()
+        compose.onNodeWithContentDescription("Reminder, labels, drawing").performClick()
         compose.onNodeWithText("Reminder").assertIsDisplayed()
         compose.onNodeWithText("Labels").performClick()
         compose.onNodeWithText("home").assertIsDisplayed()

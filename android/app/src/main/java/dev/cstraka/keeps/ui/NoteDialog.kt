@@ -15,9 +15,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.verticalScroll
@@ -40,7 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Draw
@@ -68,6 +76,10 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
@@ -370,7 +382,7 @@ fun NoteDialog(
     }
     // Keep-style sheet: the card fills the window and takes the note's
     // colour; title and body are borderless; labels and the reminder are
-    // chips; one footer row of icon tools, then Cancel and a filled Save.
+    // chips; text tools above one bar of note tools, Cancel and Save.
     // decorFitsSystemWindows=false + safeDrawing padding: the sheet
     // shrinks above the keyboard, so the caret scrolls inside the middle
     // instead of sliding under the IME.
@@ -386,22 +398,30 @@ fun NoteDialog(
         disabledIndicatorColor = Color.Transparent,
     )
 
+    // A fixed 44dp icon, so the text tools and the bar line up in one
+    // grid; a long press shows what it does.
     @Composable
-    fun RowScope.Tool(
+    fun Tool(
         icon: ImageVector,
         label: String,
         enabled: Boolean = true,
         onClick: () -> Unit,
     ) {
-        IconButton(
-            onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                onClick()
-            },
-            enabled = enabled,
-            modifier = Modifier.weight(1f).height(44.dp),
+        TooltipBox(
+            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+            tooltip = { PlainTooltip { Text(label) } },
+            state = rememberTooltipState(),
         ) {
-            Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
+            IconButton(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onClick()
+                },
+                enabled = enabled,
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
+            }
         }
     }
 
@@ -444,50 +464,6 @@ fun NoteDialog(
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 8.dp),
                     ) {
-                        if (staged.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                            ) {
-                                for (a in staged.toList()) {
-                                    val thumb = remember(a.thumbUrl) {
-                                        attachmentBitmap(a.thumbUrl)?.asImageBitmap()
-                                    }
-                                    Box(contentAlignment = Alignment.TopEnd) {
-                                        if (thumb != null) {
-                                            Image(
-                                                bitmap = thumb,
-                                                contentDescription = a.name,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.size(96.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable { viewing = a },
-                                            )
-                                        } else {
-                                            Text(a.name, fontSize = 11.sp)
-                                        }
-                                        IconButton(
-                                            onClick = { staged.remove(a) },
-                                            modifier = Modifier.size(28.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Close,
-                                                contentDescription = "Remove ${a.name}",
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        attachError?.let { err ->
-                            Text(
-                                err, fontSize = 12.sp, color = Color(0xFFE5534B),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            )
-                        }
                         PlainField(
                             state = titleState,
                             placeholder = "Title",
@@ -708,21 +684,101 @@ fun NoteDialog(
                             }
                         }
                     }
-                    // Tool row: add menu (reminder, labels), then icons.
+                    // Photos sit right above the tools, so an attached one
+                    // shows where it was added instead of above the title.
+                    if (staged.isNotEmpty()) {
+                        val strip = rememberScrollState()
+                        LaunchedEffect(staged.size) { strip.animateScrollTo(strip.maxValue) }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .horizontalScroll(strip)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .testTag("photoStrip"),
+                        ) {
+                            for (a in staged.toList()) {
+                                val thumb = remember(a.thumbUrl) {
+                                    attachmentBitmap(a.thumbUrl)?.asImageBitmap()
+                                }
+                                Box(contentAlignment = Alignment.TopEnd) {
+                                    if (thumb != null) {
+                                        Image(
+                                            bitmap = thumb,
+                                            contentDescription = a.name,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.size(64.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { viewing = a },
+                                        )
+                                    } else {
+                                        Text(a.name, fontSize = 11.sp, modifier = Modifier.width(64.dp))
+                                    }
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(2.dp).size(22.dp)
+                                            .clip(RoundedCornerShape(11.dp))
+                                            .background(Color.Black.copy(alpha = 0.6f))
+                                            .clickable { staged.remove(a) }
+                                            .semantics { contentDescription = "Remove ${a.name}" },
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    attachError?.let { err ->
+                        Text(
+                            err, fontSize = 12.sp, color = Color(0xFFE5534B),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    // Text tools, on a text note only (a checklist has none).
+                    if (items == null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                                .testTag("textTools"),
+                        ) {
+                            Tool(Icons.Filled.FormatBold, "Bold") { wrapSelection("**", "**") }
+                            Tool(Icons.Filled.FormatItalic, "Italic") { wrapSelection("*", "*") }
+                            Tool(Icons.Filled.CheckBox, "Checkbox on this line") { toggleList() }
+                            Spacer(Modifier.weight(1f))
+                            Tool(Icons.AutoMirrored.Filled.Undo, "Undo", enabled = histIdx > 0) { undo() }
+                            Tool(Icons.AutoMirrored.Filled.Redo, "Redo", enabled = histIdx < history.size - 1) { redo() }
+                        }
+                    }
+                    // One bar: note tools on the left, Cancel and Save on
+                    // the right. Every icon names itself on a long press.
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(start = 8.dp, end = 12.dp, bottom = 10.dp)
+                            .testTag("editorBar"),
                     ) {
-                        Box(Modifier.weight(1f)) {
-                            IconButton(
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    addOpen = true
-                                },
-                                modifier = Modifier.fillMaxWidth().height(44.dp),
-                            ) {
-                                Icon(Icons.Filled.Add, contentDescription = "Add", modifier = Modifier.size(22.dp))
+                        Tool(Icons.Filled.Image, "Add photo") {
+                            if (staged.size < NoteLimits.MAX_ATTACHMENTS) {
+                                photoPicker.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                    ),
+                                )
+                            } else {
+                                attachError = "At most ${NoteLimits.MAX_ATTACHMENTS} photos per note."
                             }
+                        }
+                        Tool(Icons.Filled.Checklist, "Checklist", enabled = items == null) { toChecklistMode() }
+                        Tool(Icons.Filled.Palette, "Colour") {
+                            labelPickerOpen = false
+                            colorOpen = !colorOpen
+                        }
+                        Box {
+                            Tool(Icons.Filled.MoreVert, "Reminder, labels, drawing") { addOpen = true }
                             DropdownMenu(expanded = addOpen, onDismissRequest = { addOpen = false }) {
                                 DropdownMenuItem(
                                     text = { Text(if (reminder == null) "Reminder" else "Change reminder") },
@@ -741,46 +797,33 @@ fun NoteDialog(
                                         labelPickerOpen = !labelPickerOpen
                                     },
                                 )
-                            }
-                        }
-                        Tool(Icons.Filled.Palette, "Colour") {
-                            labelPickerOpen = false
-                            colorOpen = !colorOpen
-                        }
-                        Tool(Icons.Filled.Image, "Photo") {
-                            if (staged.size < NoteLimits.MAX_ATTACHMENTS) {
-                                photoPicker.launch(
-                                    PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                    ),
+                                DropdownMenuItem(
+                                    text = { Text("Drawing") },
+                                    leadingIcon = { Icon(Icons.Filled.Draw, contentDescription = null) },
+                                    onClick = {
+                                        addOpen = false
+                                        drawOpen = true
+                                    },
                                 )
-                            } else {
-                                attachError = "At most ${NoteLimits.MAX_ATTACHMENTS} photos per note."
                             }
                         }
-                        Tool(Icons.Filled.Draw, "Draw") { drawOpen = true }
-                        Tool(Icons.Filled.Checklist, "Checklist") { toChecklistMode() }
-                        Tool(Icons.Filled.CheckBox, "Checkbox on this line", enabled = items == null) { toggleList() }
-                        Tool(Icons.Filled.FormatBold, "Bold", enabled = items == null) { wrapSelection("**", "**") }
-                        Tool(Icons.Filled.FormatItalic, "Italic", enabled = items == null) { wrapSelection("*", "*") }
-                        Tool(Icons.AutoMirrored.Filled.Undo, "Undo", enabled = histIdx > 0) { undo() }
-                        Tool(Icons.AutoMirrored.Filled.Redo, "Redo", enabled = histIdx < history.size - 1) { redo() }
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, bottom = 10.dp),
-                    ) {
-                        TextButton(onClick = onDismiss) { Text("Cancel") }
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                            onConfirm(
-                                titleState.text.toString(), bodyForSave(), c, selIds.toList(),
-                                reminder, repeatSel,
-                                checklistForSave(), staged.toList(),
-                            )
-                        }) { Text("Save") }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(
+                            onClick = onDismiss,
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                        ) { Text("Cancel") }
+                        Spacer(Modifier.width(4.dp))
+                        Button(
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                onConfirm(
+                                    titleState.text.toString(), bodyForSave(), c, selIds.toList(),
+                                    reminder, repeatSel,
+                                    checklistForSave(), staged.toList(),
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 18.dp),
+                        ) { Text("Save") }
                     }
                 }
             }
@@ -883,20 +926,42 @@ private fun PlainField(
     onKeyboardAction: (() -> Unit)? = null,
 ) {
     val color = MaterialTheme.colorScheme.onSurface
+    // The sheet's own scroll doesn't follow the caret of a field taller
+    // than it: typing at the end of a long note went on under the tools.
+    // Each edit (and the keyboard opening) scrolls the caret line, plus
+    // a line of room, into view.
+    val caretView = remember { BringIntoViewRequester() }
+    var layout by remember { mutableStateOf<(() -> TextLayoutResult?)?>(null) }
+    var focused by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val imeBottom by rememberUpdatedState(WindowInsets.ime.getBottom(density))
+    val room = with(density) { 24.dp.toPx() }
+    LaunchedEffect(state) {
+        snapshotFlow { Triple(state.text.length, state.selection, imeBottom) to focused }
+            .collect { (key, isFocused) ->
+                if (!isFocused) return@collect
+                withFrameNanos { }
+                val result = layout?.invoke() ?: return@collect
+                val at = key.second.end.coerceIn(0, result.layoutInput.text.length)
+                val caret = result.getCursorRect(at)
+                caretView.bringIntoView(caret.copy(bottom = caret.bottom + room))
+            }
+    }
     BasicTextField(
         state = state,
         textStyle = textStyle.copy(color = color),
         lineLimits = lineLimits,
         keyboardOptions = keyboardOptions,
         onKeyboardAction = onKeyboardAction?.let { run -> KeyboardActionHandler { run() } },
+        onTextLayout = { getResult -> layout = getResult },
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         decorator = { inner ->
             Box(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 if (state.text.isEmpty()) {
                     Text(placeholder, style = textStyle, color = color.copy(alpha = 0.5f))
                 }
-                inner()
+                Box(Modifier.bringIntoViewRequester(caretView)) { inner() }
             }
         },
     )

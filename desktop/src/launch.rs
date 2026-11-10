@@ -5,7 +5,7 @@
 //! (Keeps → Start at Login) and in the web Settings view; both go
 //! through the two commands here so they can't disagree.
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// App-menu id of the checkbox.
 pub const MENU_ID: &str = "keeps.autostart";
@@ -19,9 +19,7 @@ pub fn plist_path_in(home: &Path) -> PathBuf {
         .join(format!("{LABEL}.plist"))
 }
 
-fn plist_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| plist_path_in(Path::new(&h)))
-}
+
 
 /// The agent: open the installed app hidden at every login.
 pub fn plist_xml(app: &str) -> String {
@@ -102,30 +100,44 @@ fn remove_plist(path: &Path) -> Result<(), String> {
     }
 }
 
-pub fn set_enabled(enabled: bool) -> Result<(), String> {
-    let path = plist_path().ok_or("couldn't find the home directory")?;
-    let id = uid()?;
+/// File only: writing arms the next login; removing disarms it.
+/// Never bootstraps — a loaded agent would fire immediately (RunAtLoad).
+fn apply_in(home: &Path, enabled: bool) -> Result<(), String> {
+    let path = plist_path_in(home);
     if enabled {
-        if !Path::new(APP).exists() {
-            return Err("Keeps.app isn't in /Applications, so it can't start at login".to_string());
-        }
-        write_plist(&path)?;
-        // Bootout first: bootstrap over a loaded agent fails.
-        let _ = launchctl(&["bootout", &format!("gui/{id}/{LABEL}")]);
-        launchctl(&["bootstrap", &format!("gui/{id}"), &path.to_string_lossy()])?;
+        write_plist(&path)
     } else {
-        let _ = launchctl(&["bootout", &format!("gui/{id}/{LABEL}")]);
-        remove_plist(&path)?;
+        remove_plist(&path)
+    }
+}
+
+pub fn set_enabled(enabled: bool) -> Result<(), String> {
+    if enabled && !Path::new(APP).exists() {
+        return Err("Keeps.app isn't in /Applications, so it can't start at login".to_string());
+    }
+    let home = std::env::var_os("HOME").ok_or("couldn't find the home directory")?;
+    apply_in(Path::new(&home), enabled)?;
+    if !enabled {
+        // Unload a copy launchd already has; not-loaded exits non-zero.
+        if let Ok(id) = uid() {
+            let _ = launchctl(&["bootout", &format!("gui/{id}/{LABEL}")]);
+        }
     }
     Ok(())
 }
 
 /// The app-menu checkbox mirrors the same state after any toggle.
+/// Menu::get only searches top-level items; ours is in the app submenu.
 pub fn sync_menu(app: &AppHandle) {
     let enabled = is_enabled();
-    if let Some(item) = app.menu().as_ref().and_then(|m| m.get(MENU_ID)) {
-        if let Some(check) = item.as_check_menuitem() {
-            let _ = check.set_checked(enabled);
+    let Some(menu) = app.menu() else { return };
+    let Ok(items) = menu.items() else { return };
+    for item in &items {
+        if let Some(found) = item.as_submenu().and_then(|sub| sub.get(MENU_ID)) {
+            if let Some(check) = found.as_check_menuitem() {
+                let _ = check.set_checked(enabled);
+            }
+            return;
         }
     }
 }
@@ -198,5 +210,14 @@ mod tests {
         assert!(!status_in(&home));
         // Removing twice is fine.
         remove_plist(&path).unwrap();
+    }
+
+    #[test]
+    fn apply_toggles_the_file_only() {
+        let home = tmp("apply");
+        apply_in(&home, true).unwrap();
+        assert!(status_in(&home));
+        apply_in(&home, false).unwrap();
+        assert!(!status_in(&home));
     }
 }

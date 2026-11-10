@@ -15,7 +15,7 @@ import type { CardActionKind } from "./note-card.js";
 import { LabelsStore } from "../store/labels.js";
 import { IDEAS_LABEL_NAME, isIdeasLabelName, type Label } from "../../shared/label.js";
 import { formatMarkdown, select } from "../../cli/lib.js";
-import { desktopSignIn, isDesktop } from "../desktop.js";
+import { desktopAutostart, desktopSetAutostart, desktopSignIn, isDesktop } from "../desktop.js";
 
 /** Minimal sync surface the shell needs (satisfied by SyncEngine). */
 export interface SyncPort {
@@ -566,6 +566,9 @@ export class KeepsApp extends HTMLElement {
     if (this.view === "devices") {
       await this.paintDevices();
     }
+    if (this.view === "settings") {
+      await this.paintAutostart();
+    }
     this.restoreDialogs(stash);
     void this.paintDrawings().catch((error) => {
       console.error("[keeps] paint drawings failed:", error);
@@ -746,6 +749,13 @@ export class KeepsApp extends HTMLElement {
             <input class="import-file" type="file" accept="application/json,.json" hidden />
           </div>
         </div>
+        ${isDesktop() ? `
+        <div class="setting-row">
+          <div><strong>Start at Login</strong><p class="panel-sub">Open Keeps when you log in. Off unless you turn it on.</p></div>
+          <div class="setting-actions">
+            <label><input type="checkbox" data-autostart /> <span data-autostart-state>…</span></label>
+          </div>
+        </div>` : ""}
         <div class="setting-row">
           <div><strong>Shortcuts</strong><p class="panel-sub"><kbd>M</kbd> menu · <kbd>/</kbd> search · <kbd>Ctrl/⌘ Enter</kbd> save a note · <kbd>Ctrl/⌘ Z</kbd> undo in the editor.</p></div>
         </div>
@@ -761,6 +771,32 @@ export class KeepsApp extends HTMLElement {
   private requireDevices(): DevicesClient {
     if (!this.devices) throw new Error("keeps-app: connect() first");
     return this.devices;
+  }
+
+  /** Fill the Start-at-Login checkbox (Mac app settings only). */
+  private async paintAutostart(): Promise<void> {
+    const box = this.querySelector<HTMLInputElement>("[data-autostart]");
+    if (!box) return;
+    const state = this.querySelector("[data-autostart-state]");
+    try {
+      const on = await desktopAutostart();
+      box.checked = on === true;
+      box.disabled = on === null;
+      if (state) state.textContent = on === null ? "" : on ? "On" : "Off";
+    } catch {
+      if (state) state.textContent = "Couldn't read the login setting.";
+    }
+  }
+
+  private async onAutostartToggle(box: HTMLInputElement): Promise<void> {
+    const want = box.checked;
+    box.disabled = true;
+    const ok = await desktopSetAutostart(want);
+    box.disabled = false;
+    box.checked = ok ? want : !want;
+    const state = this.querySelector("[data-autostart-state]");
+    if (state) state.textContent = ok ? (want ? "On" : "Off") : "Couldn't change the login setting.";
+    buzz(ok ? "tap" : "error");
   }
 
   private setDevicesStatus(text: string): void {
@@ -1242,6 +1278,9 @@ export class KeepsApp extends HTMLElement {
     const target = event.target as HTMLElement;
     if (target.classList.contains("import-file")) {
       void this.onImportFile(target as HTMLInputElement);
+    }
+    if (target.matches?.("[data-autostart]")) {
+      void this.onAutostartToggle(target as HTMLInputElement);
     }
   }
 

@@ -4,7 +4,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   apiPath,
+  desktopAutostart,
   desktopFetch,
+  desktopSetAutostart,
   desktopSignIn,
   installDesktop,
   isDesktop,
@@ -129,5 +131,33 @@ describe("installDesktop", () => {
 
     expect(desktopSignIn()).toBe(true);
     expect(calls.at(-1)).toEqual({ cmd: "sign_in" });
+  });
+});
+
+describe("autostart", () => {
+  test("outside the app there is no login setting", async () => {
+    expect(await desktopAutostart()).toBeNull();
+    expect(await desktopSetAutostart(true)).toBe(false);
+  });
+
+  test("status and toggle go through the app's commands", async () => {
+    const { calls, invoke } = fakeInvoke((call) =>
+      call.cmd === "autostart_status" ? true : undefined,
+    );
+    g["__TAURI__"] = { core: { invoke }, event: { listen: async () => () => {} } };
+    expect(await desktopAutostart()).toBe(true);
+    expect(await desktopSetAutostart(false)).toBe(true);
+    expect(calls).toEqual([
+      { cmd: "autostart_status" },
+      { cmd: "autostart_set", args: { enabled: false } },
+    ]);
+  });
+
+  test("a failed toggle resolves false", async () => {
+    const { invoke } = fakeInvoke(() => {
+      throw "launchctl failed";
+    });
+    g["__TAURI__"] = { core: { invoke }, event: { listen: async () => () => {} } };
+    expect(await desktopSetAutostart(true)).toBe(false);
   });
 });

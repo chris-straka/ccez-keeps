@@ -1581,6 +1581,43 @@ describe("keeps-app labels + reminders (WEB-CLIENTS)", () => {
     t.cleanup();
   });
 
+  test("settings offers Start at Login in the Mac app only", async () => {
+    const t = await mountWithLabels([], []);
+    await t.ready;
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-view="settings"]')!.click();
+    await t.tick();
+    expect(t.app.querySelector("[data-autostart]")).toBeNull();
+    const calls: Array<{ cmd: string; args?: unknown }> = [];
+    const g = globalThis as unknown as Record<string, unknown>;
+    let enabled = false;
+    g["__TAURI__"] = {
+      core: {
+        invoke: async (cmd: string, args?: Record<string, unknown>) => {
+          calls.push(args === undefined ? { cmd } : { cmd, args });
+          if (cmd === "autostart_status") return enabled;
+          if (cmd === "autostart_set") enabled = (args?.["enabled"] as boolean) ?? false;
+          return undefined;
+        },
+      },
+      event: { listen: async () => () => {} },
+    };
+    t.app.querySelector<HTMLButtonElement>('[data-view="settings"]')!.click();
+    await t.tick();
+    const box = t.app.querySelector<HTMLInputElement>("[data-autostart]");
+    expect(box).not.toBeNull();
+    expect(box!.checked).toBe(false);
+    expect(t.app.querySelector("[data-autostart-state]")?.textContent).toBe("Off");
+    box!.checked = true;
+    box!.dispatchEvent(new Event("change", { bubbles: true }));
+    await t.tick();
+    expect(enabled).toBe(true);
+    expect(t.app.querySelector("[data-autostart-state]")?.textContent).toBe("On");
+    expect(calls).toContainEqual({ cmd: "autostart_set", args: { enabled: true } });
+    delete g["__TAURI__"];
+    t.cleanup();
+  });
+
   test("labels panel filter narrows the grid, chip clears it", async () => {
     const t = await mountWithLabels(
       [

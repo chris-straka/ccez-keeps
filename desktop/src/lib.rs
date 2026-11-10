@@ -7,10 +7,11 @@
 //! other Mac apps; Cmd+Q quits.
 mod api;
 mod auth;
+mod launch;
 mod snapshot;
 mod update;
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 
 const MENU_SIGN_IN: &str = "keeps.sign-in";
@@ -23,11 +24,37 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::default(app)?;
     let items = menu.items()?;
     if let Some(app_menu) = items.first().and_then(|item| item.as_submenu()) {
-        let sign_in = MenuItem::with_id(app, MENU_SIGN_IN, "Sign In with Browser…", true, None::<&str>)?;
+        let sign_in = MenuItem::with_id(
+            app,
+            MENU_SIGN_IN,
+            "Sign In with Browser…",
+            true,
+            None::<&str>,
+        )?;
         let sign_out = MenuItem::with_id(app, MENU_SIGN_OUT, "Sign Out", true, None::<&str>)?;
-        let updates = MenuItem::with_id(app, MENU_UPDATES, "Check for Updates", true, None::<&str>)?;
+        let updates =
+            MenuItem::with_id(app, MENU_UPDATES, "Check for Updates", true, None::<&str>)?;
+        let autostart = CheckMenuItem::with_id(
+            app,
+            launch::MENU_ID,
+            "Start at Login",
+            true,
+            launch::is_enabled(),
+            None::<&str>,
+        )?;
         let separator = PredefinedMenuItem::separator(app)?;
-        app_menu.insert_items(&[&updates, &separator, &sign_in, &sign_out], 1)?;
+        let separator2 = PredefinedMenuItem::separator(app)?;
+        app_menu.insert_items(
+            &[
+                &updates,
+                &separator,
+                &sign_in,
+                &sign_out,
+                &separator2,
+                &autostart,
+            ],
+            1,
+        )?;
     }
     Ok(menu)
 }
@@ -44,6 +71,12 @@ fn on_menu(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn(async move { auth::sign_out(&app).await });
         }
         MENU_UPDATES => update::check_now(app),
+        id if id == launch::MENU_ID => {
+            if let Err(e) = launch::set_enabled(!launch::is_enabled()) {
+                eprintln!("[keeps] couldn't change start at login: {e}");
+            }
+            launch::sync_menu(app);
+        }
         _ => {}
     }
 }
@@ -72,6 +105,8 @@ pub fn run() {
             auth::sign_in,
             auth::sign_out_command,
             auth::account,
+            launch::autostart_status,
+            launch::autostart_set,
         ])
         .menu(build_menu)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))

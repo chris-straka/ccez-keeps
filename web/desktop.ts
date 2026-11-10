@@ -84,6 +84,29 @@ export function installDesktop(): boolean {
   return true;
 }
 
+/** Start-at-login state, or null outside the Mac app. */
+export async function desktopAutostart(): Promise<boolean | null> {
+  const t = tauri();
+  if (!t) return null;
+  return t.core.invoke<boolean>("autostart_status");
+}
+
+/**
+ * Turn start-at-login on or off. Resolves false outside the Mac app
+ * or when the app reports an error.
+ */
+export async function desktopSetAutostart(enabled: boolean): Promise<boolean> {
+  const t = tauri();
+  if (!t) return false;
+  try {
+    await t.core.invoke("autostart_set", { enabled });
+    return true;
+  } catch (error) {
+    console.error("[keeps] start-at-login failed:", error);
+    return false;
+  }
+}
+
 /** Open the browser to sign this Mac in. False outside the app. */
 export function desktopSignIn(): boolean {
   const t = tauri();

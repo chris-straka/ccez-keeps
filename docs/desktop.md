@@ -36,6 +36,11 @@ pattern as ccez-llm's `src-tauri/`) around the same web build
   keep running, and clicking the Dock icon brings it back. Cmd+Q quits.
   Size, position and maximized state are remembered
   (tauri-plugin-window-state).
+- **Start at Login, off by default.** Keeps → Start at Login (or the
+  Settings toggle) writes `~/Library/LaunchAgents/uk.ccez.keeps.login.plist`,
+  which opens the installed app hidden at login; turning it off removes
+  the file again. A fresh install has no file, so it never starts at
+  login unless asked (`desktop/src/launch.rs`).
 - **Updates itself.** At launch and every 6 h it reads
   `releases/latest/download/latest.json`, checks the signature against
   `plugins.updater.pubkey`, installs over itself, and relaunches into the
@@ -47,7 +52,7 @@ pattern as ccez-llm's `src-tauri/`) around the same web build
 ```sh
 bun install
 bunx tauri build --bundles app        # desktop/target/release/bundle/macos/Keeps.app
-cd desktop && cargo test              # sign-in link parsing, API path guard, token file mode
+cd desktop && cargo test              # sign-in link parsing, API path guard, token file mode, login-item plist
 ```
 
 Fleet jobs build with `CARGO_TARGET_DIR` set, so the bundle lands under

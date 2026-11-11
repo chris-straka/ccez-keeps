@@ -178,4 +178,30 @@ describe("paste an image", () => {
     expect(fresh?.attachments.map((a) => a.name)).toEqual(["shot.png"]);
     t.cleanup();
   });
+
+  test("on the home page opens a new note holding the image", async () => {
+    const t = mount([newNote({ id: "x", title: "Other", body: "", updatedAt: 1000 })]);
+    await t.ready;
+    await t.settle();
+    const event = paste(document.body, [png("board.png")]);
+    await t.settle();
+    expect(event.defaultPrevented).toBe(true);
+    expect(t.app.querySelector(".editor")).not.toBeNull();
+    expect(t.app.querySelectorAll(".attach-thumb")).toHaveLength(1);
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    await t.settle();
+    const fresh = (await t.store.all()).find((n) => n.attachments.length > 0);
+    expect(fresh?.attachments.map((a) => a.name)).toEqual(["board.png"]);
+    t.cleanup();
+  });
+
+  test("text pasted on the home page opens nothing", async () => {
+    const t = mount();
+    await t.ready;
+    const event = paste(document.body, [], "hello");
+    await t.settle();
+    expect(event.defaultPrevented).toBe(false);
+    expect(t.app.querySelector(".editor")).toBeNull();
+    t.cleanup();
+  });
 });

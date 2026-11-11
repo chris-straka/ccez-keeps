@@ -3,7 +3,6 @@
 - Notes flicker when tabbing between keeps and ccez-llm (text that looks
   like it came from ccez-llm), and once while typing a line that wrapped.
   Maybe the ccez-keys Mac app asking the browser for accessibility.
-- Pasting an image on the home page should open a new note with it.
 - Mobile: tapping the empty space in a new note should start typing (now
   only a bit higher works).
 - No title field: titles fill themselves after save, by on-device AI where

@@ -175,6 +175,7 @@ export class KeepsApp extends HTMLElement {
     this.addEventListener("change", (event) => this.onChange(event));
     this.addEventListener("keydown", (event) => this.onKeyDown(event));
     this.addEventListener("paste", (event) => this.onComposerPaste(event as ClipboardEvent));
+    this.ownerDocument.addEventListener("paste", this.onPagePaste);
     this.addEventListener("dragstart", (event) => this.onDragStart(event));
     this.addEventListener("dragover", (event) => this.onDragOver(event));
     this.addEventListener("dragleave", (event) => this.onDragLeave(event));
@@ -312,6 +313,7 @@ export class KeepsApp extends HTMLElement {
       this.dueTimer = undefined;
     }
     this.ownerDocument.removeEventListener("visibilitychange", this.onVisible);
+    this.ownerDocument.removeEventListener("paste", this.onPagePaste);
     this.ownerDocument.defaultView?.removeEventListener("hashchange", this.onHashChange);
   }
 
@@ -1273,6 +1275,24 @@ export class KeepsApp extends HTMLElement {
       void this.editor().attachFiles(images);
     });
   }
+
+  /**
+   * An image pasted with nothing to type in (the home page, owner
+   * 2026-11-10) starts a new note holding it. Fields, the composer and an
+   * open editor handle their own pastes.
+   */
+  private onPagePaste = (event: Event): void => {
+    const e = event as ClipboardEvent;
+    if (e.defaultPrevented) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.("input, textarea, [contenteditable], .composer, .editor, dialog")) return;
+    if (this.querySelector(".editor")) return;
+    const images = clipboardImages(e.clipboardData);
+    if (images.length === 0) return;
+    e.preventDefault();
+    this.openEditor(null, { title: "", body: "", color: "default" });
+    void this.editor().attachFiles(images);
+  };
 
   private onChange(event: Event): void {
     const target = event.target as HTMLElement;

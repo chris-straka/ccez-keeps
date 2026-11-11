@@ -265,12 +265,45 @@ class NotesViewModel(
             ReminderWorker.schedule(app, note.id, note.title, note.body, reminderAt, repeat)
         }
         touch()
+        nameNote(note.id, null)
+    }
+
+    /** A note's words: its checklist rows, else its body (what a title names). */
+    private fun noteText(note: Note): String =
+        note.checklist?.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.text } ?: note.body
+
+    /**
+     * Titles name themselves (owner, 2026-11-10): after a save, a note whose
+     * text changed, or that has no title yet, gets one from /api/title (Muse
+     * on the Worker; this phone has no on-device model). It lands only if
+     * the text is still what was named. Offline: the note stays as it is.
+     */
+    private fun nameNote(id: String, before: String?) = viewModelScope.launch {
+        val api = api ?: return@launch
+        val note = store.noteById(id) ?: return@launch
+        if (note.deleted) return@launch
+        val text = noteText(note)
+        if (text.isBlank()) return@launch
+        if (note.title.isNotEmpty() && before == text) return@launch
+        val title = try {
+            withContext(Dispatchers.IO) { api.title(text) }
+        } catch (_: Exception) {
+            null
+        } ?: return@launch
+        writes.withLock {
+            val fresh = store.noteById(id) ?: return@withLock
+            if (fresh.deleted || noteText(fresh) != text || fresh.title == title) return@withLock
+            store.put(fresh.copy(title = title, updatedAt = now()))
+            touch()
+        }
     }
 
     /** Editor Save: text, colour, labels, reminder, checklist and photos in one write. */
     fun save(note: Note, edit: NoteEdit) = viewModelScope.launch {
+        var before: String? = null
         writes.withLock {
             val current = store.noteById(note.id) ?: note
+            before = noteText(current)
             val candidate = current.copy(
                 title = edit.title, body = edit.body, color = edit.color,
                 labelIds = edit.labelIds.take(NoteLimits.MAX_LABELS),
@@ -285,6 +318,7 @@ class NotesViewModel(
             editing.value = null
             touch()
         }
+        nameNote(note.id, before)
     }
 
     /** Drag-to-label and similar: persist label/reminder picks alone. */

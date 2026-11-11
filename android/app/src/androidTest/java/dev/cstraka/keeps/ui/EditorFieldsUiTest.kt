@@ -48,8 +48,6 @@ class EditorFieldsUiTest {
             )
         }
         compose.onAllNodesWithText("Take a note…").assertCountEquals(0)
-        compose.onNodeWithTag("editorTitle").performTextInput("Errands")
-        compose.onNodeWithTag("editorTitle").performImeAction()
         compose.onNodeWithTag("editorBody").assertIsFocused()
         compose.onNodeWithTag("editorBody").performTextInput("milk")
         compose.onNodeWithContentDescription("Bold").performClick()
@@ -64,6 +62,6 @@ class EditorFieldsUiTest {
         }
         compose.onNodeWithText("Save").performClick()
         compose.waitForIdle()
-        assertEquals("Errands" to "milk", saved)
+        assertEquals("" to "milk", saved)
     }
 }

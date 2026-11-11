@@ -17,6 +17,11 @@ import dev.cstraka.keeps.sync.decodeLabelSyncResponse
 import dev.cstraka.keeps.sync.decodePullResponse
 import dev.cstraka.keeps.sync.decodeSyncResponse
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -111,6 +116,16 @@ class KeepsApi(
     }
 
     /** Rename this or a peer device (either gate; 404 when unknown). */
+    /** A few words naming a note's text (POST /api/title, worker/title.ts). */
+    fun title(text: String): String? {
+        val payload = buildJsonObject { put("text", text) }.toString()
+        val req = authed("$baseUrl/api/title")
+            .post(payload.toRequestBody(JSON_MEDIA))
+            .build()
+        val body = apiJson.parseToJsonElement(execute(req)).jsonObject
+        return body["title"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
     fun rename(deviceId: String, deviceName: String) {
         val payload = dev.cstraka.keeps.sync.RenameRequest(deviceId, deviceName)
         val req = authed("$baseUrl/api/devices/rename")

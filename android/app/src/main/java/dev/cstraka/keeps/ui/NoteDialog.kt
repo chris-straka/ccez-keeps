@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.PaddingValues
@@ -172,10 +173,8 @@ fun NoteDialog(
 ) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
-    val focusRequester = remember { FocusRequester() }
     val bodyFocus = remember { FocusRequester() }
     // State-based fields: only these take pasted images (contentReceiver).
-    val titleState = rememberTextFieldState(initialTitle)
     val bodyState = rememberTextFieldState(initialBody, TextRange(initialBody.length))
     fun setBody(text: String, selection: TextRange = TextRange(text.length)) {
         bodyState.edit {
@@ -274,6 +273,10 @@ fun NoteDialog(
         } catch (_: IllegalStateException) {
         }
     }
+    fun focusBodyAtEnd() {
+        if (items == null) bodyState.edit { selection = TextRange(length) }
+        focusBody()
+    }
     // Undo history over body text (mirrors the web editor's snapshot
     // history; title stays a plain field on both clients).
     val history = remember { mutableListOf(initialBody) }
@@ -366,8 +369,8 @@ fun NoteDialog(
     // Back / tap-outside keep the draft like Keep does; only Cancel discards.
     // Unchanged notes just close, so reopening never bumps updatedAt.
     fun closeKeeping() {
-        val t = titleState.text.toString()
-        val changed = t != initialTitle || bodyForSave() != initialBody ||
+        val t = initialTitle
+        val changed = bodyForSave() != initialBody ||
             c != initialColor || selIds.toList() != initialLabelIds ||
             reminder != initialReminderAt || repeatSel != initialRepeat ||
             checklistForSave() != initialChecklist || staged.toList() != initialAttachments
@@ -442,10 +445,8 @@ fun NoteDialog(
             // it fired before the fields were attached and focused nothing.
             LaunchedEffect(Unit) {
                 try {
-                    if (startInBody && (initialChecklist == null || initialChecklist.isNotEmpty())) {
+                    if (initialChecklist == null || initialChecklist.isNotEmpty()) {
                         bodyFocus.requestFocus()
-                    } else {
-                        focusRequester.requestFocus()
                     }
                 } catch (_: IllegalStateException) {
                 }
@@ -461,21 +462,19 @@ fun NoteDialog(
                     Spacer(Modifier.height(8.dp))
                     Column(
                         modifier = Modifier.weight(1f)
+                            // A tap in the empty space under the text types
+                            // at its end (owner, 2026-11-10: only the first
+                            // lines took a tap).
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { focusBodyAtEnd() }
                             .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = 8.dp)
+                            .testTag("editorScroll"),
                     ) {
-                        PlainField(
-                            state = titleState,
-                            placeholder = "Title",
-                            textStyle = MaterialTheme.typography.titleLarge,
-                            lineLimits = TextFieldLineLimits.SingleLine,
-                            // Enter moves on to the body, as on the web.
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            onKeyboardAction = { focusBody() },
-                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-                                .then(receiveImages)
-                                .testTag("editorTitle"),
-                        )
+                        // No title field (owner, 2026-11-10): titles name
+                        // themselves after a save (NotesViewModel.nameNote).
                         val rows = items
                         if (rows == null) {
                             PlainField(
@@ -817,7 +816,7 @@ fun NoteDialog(
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                                 onConfirm(
-                                    titleState.text.toString(), bodyForSave(), c, selIds.toList(),
+                                    initialTitle, bodyForSave(), c, selIds.toList(),
                                     reminder, repeatSel,
                                     checklistForSave(), staged.toList(),
                                 )

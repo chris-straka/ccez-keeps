@@ -2,6 +2,10 @@ package dev.cstraka.keeps.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -63,13 +67,25 @@ class EditorFocusUiTest {
     }
 
     @Test
-    fun enterInNewNoteTitle_movesToBody() {
+    fun newNote_opensWithBodyFocused_andNoTitleField() {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForSeed()
             compose.onNodeWithContentDescription("Take a note").performClick()
-            compose.onNodeWithTag("editorTitle").assertIsFocused()
-            compose.onNodeWithTag("editorTitle").performTextInput("Errands")
-            compose.onNodeWithTag("editorTitle").performImeAction()
+            compose.onNodeWithTag("editorBody").assertIsFocused()
+            compose.onAllNodesWithTag("editorTitle").assertCountEquals(0)
+        }
+    }
+
+    /** A tap in the empty space under the text types there (owner, 2026-11-10). */
+    @Test
+    fun tappingEmptySpace_focusesBody() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForSeed()
+            compose.onNodeWithContentDescription("Take a note").performClick()
+            compose.onNodeWithTag("editorBody").performTextInput("milk")
+            compose.onNodeWithTag("editorScroll").performTouchInput {
+                click(androidx.compose.ui.geometry.Offset(centerX, bottom - 20f))
+            }
             compose.onNodeWithTag("editorBody").assertIsFocused()
         }
     }
@@ -85,12 +101,12 @@ class EditorFocusUiTest {
     }
 
     @Test
-    fun tappingNoteTitle_opensWithTitleFocused() {
+    fun tappingNoteTitle_opensWithBodyFocused() {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForSeed()
             compose.onNodeWithText("Groceries").performClick()
             compose.onNodeWithTag("editorCard").assertIsDisplayed()
-            compose.onNodeWithTag("editorTitle").assertIsFocused()
+            compose.onNodeWithTag("editorBody").assertIsFocused()
         }
     }
 }

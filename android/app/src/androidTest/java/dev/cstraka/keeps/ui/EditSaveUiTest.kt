@@ -66,7 +66,7 @@ class EditSaveUiTest {
     private fun titleNow(): String? = runBlocking { app.localStore.noteById(seeded.id)?.title }
 
     @Test
-    fun editingTitleAndBodyThenSave_persistsBoth() {
+    fun editingBodyThenSave_persistsIt_titleKept() {
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("milk").fetchSemanticsNodes().isNotEmpty()
@@ -74,8 +74,6 @@ class EditSaveUiTest {
             compose.onNodeWithText("milk").performClick()
             compose.onNodeWithTag("editorCard").assertIsDisplayed()
 
-            compose.onNodeWithTag("editorTitle").performTextClearance()
-            compose.onNodeWithTag("editorTitle").performTextInput("Groceries (Sat)")
             compose.onNodeWithTag("editorBody").performTextClearance()
             compose.onNodeWithTag("editorBody").performTextInput("milk and eggs")
             compose.onNodeWithContentDescription("Colour").performClick()
@@ -86,13 +84,13 @@ class EditSaveUiTest {
             // (A timeout here reads as a plain value mismatch below.)
             try {
                 compose.waitUntil(20_000) {
-                    bodyNow() == "milk and eggs" && titleNow() == "Groceries (Sat)"
+                    bodyNow() == "milk and eggs" && titleNow() == "Groceries"
                 }
             } catch (_: androidx.compose.ui.test.ComposeTimeoutException) {
             }
             Thread.sleep(1_500)
             assertEquals("milk and eggs", bodyNow())
-            assertEquals("Groceries (Sat)", titleNow())
+            assertEquals("Groceries", titleNow())
             assertEquals("teal", runBlocking { app.localStore.noteById(seeded.id)?.color })
         }
     }

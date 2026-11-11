@@ -1,3 +1,14 @@
+# Owner notes, 2026-11-10 (from ccez-keeps)
+
+- Notes flicker when tabbing between keeps and ccez-llm (text that looks
+  like it came from ccez-llm), and once while typing a line that wrapped.
+  Maybe the ccez-keys Mac app asking the browser for accessibility.
+- Pasting an image on the home page should open a new note with it.
+- Mobile: tapping the empty space in a new note should start typing (now
+  only a bit higher works).
+- No title field: titles fill themselves after save, by on-device AI where
+  there is one (not on the S24), else Muse (muse-spark-1.3-contributor).
+
 # Goal
 
 Build `ccez-keeps`: a faster Google Keep clone as a vanilla TS + Web Components SPA on Cloudflare, local-first, single-user, no collaboration, built only with agents. Design target is `google-keep-example.png`: dark theme, left nav (Notes / Reminders / Edit labels / Archive / Trash), top "Take a note..." composer, CSS-masonry note cards.

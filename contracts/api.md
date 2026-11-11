@@ -140,3 +140,12 @@ edit. No duplicates: merge is keyed by `id`.
 fresh seq, so a late-arriving old-timestamp row is still newer than every
 outstanding cursor and can never go unseen. `since`/`cursor` are seq
 values; clients treat them as opaque.
+
+## POST /api/title
+
+`{ "text": string }` → `{ "title": string }`. A few words naming a note's
+text (worker/title.ts, Muse with the Worker's `MUSE_API_KEY` secret). Same
+gate as sync (device token or Access). 400 without text, 503 when the key
+is unset, 502 when no title came back. Clients write the title into the
+note themselves and sync it as an ordinary edit, only if the note's text
+is still what was named.

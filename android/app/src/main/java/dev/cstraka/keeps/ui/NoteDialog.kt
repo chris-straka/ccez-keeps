@@ -172,6 +172,7 @@ fun NoteDialog(
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     val bodyFocus = remember { FocusRequester() }
     // State-based fields: only these take pasted images (contentReceiver).
@@ -276,6 +277,8 @@ fun NoteDialog(
     fun focusBodyAtEnd() {
         if (items == null) bodyState.edit { selection = TextRange(length) }
         focusBody()
+        // Already focused, the keyboard put away: focusing again doesn't bring it back.
+        keyboard?.show()
     }
     // Undo history over body text (mirrors the web editor's snapshot
     // history; title stays a plain field on both clients).

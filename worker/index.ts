@@ -25,6 +25,7 @@ import {
 import { applySync, getDeltas, type NotesDb } from "./notes.js";
 import { purgeTrash } from "./purge.js";
 import { checkIdeasReader, listIdeas } from "./ideas.js";
+import { museTitler, type Titler } from "./title.js";
 
 export interface WorkerEnv {
   // Minimal surface we use; avoids DOM-vs-Workers lib clashes.
@@ -35,6 +36,8 @@ export interface WorkerEnv {
   ACCESS_AUD?: string;
   /** SHA-256 hex of the ideas reader token (wrangler secret); unset = 503. */
   IDEAS_READER_SHA256?: string;
+  /** Muse key for note titles (wrangler secret); unset = titles 503. */
+  MUSE_API_KEY?: string;
 }
 
 export interface AppDeps {
@@ -43,6 +46,8 @@ export interface AppDeps {
   access: AccessEnv;
   /** SHA-256 hex of the read-only ideas token (worker/ideas.ts). */
   ideasReaderHash?: string | undefined;
+  /** Names a note from its text (worker/title.ts); absent = 503. */
+  titler?: Titler | undefined;
 }
 
 function readNotes(value: unknown): Note[] | null {
@@ -252,6 +257,24 @@ export function createApp(deps: AppDeps) {
     return c.json({ deviceId, token });
   });
 
+  // POST /api/title { text } -> { title } (worker/title.ts)
+  app.post("/api/title", async (c) => {
+    if (!deps.titler) return c.json({ error: "titles are off" }, 503);
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid JSON" }, 400);
+    }
+    const text = (body as { text?: unknown } | null)?.text;
+    if (typeof text !== "string" || text.trim() === "") {
+      return c.json({ error: "text must be a non-empty string" }, 400);
+    }
+    const title = await deps.titler(text).catch(() => null);
+    if (!title) return c.json({ error: "no title" }, 502);
+    return c.json({ title });
+  });
+
   // GET /api/ideas?since=<updatedAt ms> -> { ideas, serverTime }
   app.get("/api/ideas", async (c) => {
     const since = readSince(
@@ -396,6 +419,7 @@ export default {
         assetsFetch: (req) => env.ASSETS.fetch(req),
         access: { teamDomain: env.ACCESS_TEAM_DOMAIN, aud: env.ACCESS_AUD },
         ideasReaderHash: env.IDEAS_READER_SHA256,
+        titler: env.MUSE_API_KEY ? museTitler(env.MUSE_API_KEY) : undefined,
       });
       return app.fetch(request, env);
     }

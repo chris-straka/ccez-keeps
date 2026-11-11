@@ -408,6 +408,24 @@ export class SyncEngine {
    * or when the push fails, so the note stays safely in Trash instead of
    * vanishing unsynced (flush() reports failures via status, not throws).
    */
+  /** A title for a note's text from the Worker (worker/title.ts); null
+   * offline, on any failure, or when titles are off there. */
+  async titleFor(text: string): Promise<string | null> {
+    if (!this.isOnline()) return null;
+    try {
+      const res = await this.fetchFn("/api/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { title?: unknown };
+      return typeof data.title === "string" && data.title.trim() !== "" ? data.title : null;
+    } catch {
+      return null;
+    }
+  }
+
   async deleteForever(id: string): Promise<void> {
     if (!this.isOnline()) throw new Error("deleteForever: offline");
     await this.store.tombstone(id);

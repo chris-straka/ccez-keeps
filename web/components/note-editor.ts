@@ -99,6 +99,9 @@ export class NoteEditor extends HTMLElement {
   /** Attachments staged for save (start from the opened note's). */
   private staged: Attachment[] = [];
   private editorError = "";
+  /** The note's title as it opened: titles name themselves after a save
+   * (keeps-app asks /api/title), so the editor has no field for one. */
+  private openTitle = "";
 
   connectedCallback(): void {
     this.addEventListener("click", (event) => {
@@ -262,6 +265,7 @@ export class NoteEditor extends HTMLElement {
     // keyboard up, so the keyboard's mic dictates straight into it.
     this.bodyPlaceholder = opts?.idea ? "Say or type the idea…" : "Take a note...";
     const source = draft ?? { title: "", body: "", color: "default" };
+    this.openTitle = source.title;
     const selected = new Set(source.labelIds ?? []);
     this.history = [];
     this.cursor = -1;
@@ -281,7 +285,6 @@ export class NoteEditor extends HTMLElement {
         <div class="editor note-dialog" role="dialog" aria-modal="true" aria-label="${draft ? "Edit note" : "New note"}" data-color="${color}">
           <div class="editor-scroll">
             <div class="editor-attachments"></div>
-            <input class="editor-title" placeholder="Title" value="${escapeHtml(source.title)}" />
             <div class="editor-body-region"></div>
             <div class="editor-chips"></div>
             <div class="editor-error" role="alert" hidden></div>
@@ -348,7 +351,7 @@ export class NoteEditor extends HTMLElement {
     } else if (opts?.idea) {
       this.querySelector<HTMLTextAreaElement>(".editor-body")?.focus();
     } else {
-      this.querySelector<HTMLInputElement>(".editor-title")?.focus();
+      this.querySelector<HTMLElement>(".editor-body, .check-text")?.focus();
     }
   }
 
@@ -651,7 +654,7 @@ export class NoteEditor extends HTMLElement {
 
   /** What Save would store right now (also stashed across re-renders). */
   draft(): NoteDraft {
-    const title = this.querySelector<HTMLInputElement>(".editor-title")?.value ?? "";
+    const title = this.openTitle;
     // Checklist mode: items are the source of truth; body carries the
     // joined lines so older clients still show the text.
     const checklist =

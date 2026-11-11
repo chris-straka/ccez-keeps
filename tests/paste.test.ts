@@ -98,13 +98,13 @@ describe("paste an image", () => {
     t.cleanup();
   });
 
-  test("into an existing note's title adds to its photos", async () => {
+  test("into an existing note adds to its photos", async () => {
     const t = mount([newNote({ id: "1", title: "Trip", body: "", updatedAt: 1000 })]);
     await t.ready;
     await t.settle();
     (t.app.querySelector("note-card") as HTMLElement).click();
     await t.settle();
-    paste(t.app.querySelector(".editor-title")!, [png("a.png"), png("b.png")]);
+    paste(t.app.querySelector(".editor-body")!, [png("a.png"), png("b.png")]);
     await t.settle();
     t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
     await t.settle();
@@ -142,20 +142,17 @@ describe("paste an image", () => {
     await t.ready;
     t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
     await t.settle();
-    t.app.querySelector<HTMLInputElement>(".composer-title")!.value = "Receipt";
     const body = t.app.querySelector<HTMLTextAreaElement>(".composer-body")!;
     body.value = "for taxes";
     const event = paste(body, [png("receipt.png")]);
     await t.settle();
     expect(event.defaultPrevented).toBe(true);
     expect(t.app.querySelector(".composer")).toBeNull();
-    expect(t.app.querySelector<HTMLInputElement>(".editor-title")?.value).toBe("Receipt");
     expect(t.app.querySelector<HTMLTextAreaElement>(".editor-body")?.value).toBe("for taxes");
     expect(t.app.querySelectorAll(".attach-thumb")).toHaveLength(1);
     t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
     await t.settle();
     const [saved] = await t.store.all();
-    expect(saved?.title).toBe("Receipt");
     expect(saved?.attachments.map((a) => a.name)).toEqual(["receipt.png"]);
     t.cleanup();
   });

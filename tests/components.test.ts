@@ -403,7 +403,7 @@ describe("keeps-app", () => {
     await t.ready;
     t.app.querySelector<HTMLButtonElement>(".composer-closed")!.click();
     await t.tick();
-    t.app.querySelector<HTMLInputElement>(".composer-title")!.value = "New";
+    t.app.querySelector<HTMLTextAreaElement>(".composer-body")!.value = "New";
     t.app.querySelector<HTMLButtonElement>('[data-composer="save"]')!.click();
     await t.tick();
     await t.tick();
@@ -457,7 +457,7 @@ describe("keeps-app", () => {
     expect(
       t.app.querySelector('.editor-tools [data-panel="color"]')?.getAttribute("aria-expanded"),
     ).toBe("true");
-    t.app.querySelector<HTMLInputElement>(".editor-title")!.value = "Changed";
+    t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value = "Changed";
     t.app.querySelector<HTMLButtonElement>('[data-action="cancel"]')!.click();
     await t.tick();
     expect(t.app.querySelector(".editor")).toBeNull();
@@ -518,13 +518,14 @@ describe("keeps-app", () => {
     await t.ready;
     t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
     await t.tick();
-    t.app.querySelector<HTMLInputElement>(".composer-title")!.value = "Shopping";
     t.app.querySelector<HTMLTextAreaElement>(".composer-body")!.value = "eggs";
     t.app.querySelector<HTMLButtonElement>('[data-composer="save"]')!.click();
     await t.tick();
     const all = await t.store.all();
     expect(all).toHaveLength(1);
-    expect(all[0]?.title).toBe("Shopping");
+    expect(all[0]?.body).toBe("eggs");
+    // No title field: titles name themselves after a save.
+    expect(all[0]?.title).toBe("");
     expect(t.stats().pushes).toBe(1);
     t.cleanup();
   });
@@ -598,10 +599,10 @@ describe("keeps-app", () => {
     await t.tick();
     const editor = t.app.querySelector(".editor");
     expect(editor).not.toBeNull();
-    t.app.querySelector<HTMLInputElement>(".editor-title")!.value = "After";
+    t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value = "After";
     t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
     await t.tick();
-    expect((await t.store.get("1"))?.title).toBe("After");
+    expect((await t.store.get("1"))?.body).toBe("After");
     t.cleanup();
   });
 
@@ -652,12 +653,12 @@ describe("keeps-app", () => {
     t.app.querySelector<HTMLButtonElement>('[data-new="open"]')!.click();
     await t.tick();
     expect(t.app.querySelector(".editor")).not.toBeNull();
-    t.app.querySelector<HTMLInputElement>(".editor-title")!.value = "Fresh";
+    t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value = "Fresh";
     t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
     await t.tick();
     const all = await t.store.all();
     expect(all).toHaveLength(1);
-    expect(all[0]?.title).toBe("Fresh");
+    expect(all[0]?.body).toBe("Fresh");
     expect(t.stats().pushes).toBe(1);
     t.cleanup();
   });
@@ -908,16 +909,45 @@ describe("keeps-app", () => {
     t.cleanup();
   });
 
+  test("a saved note names itself, and again only when its text changes", async () => {
+    const t = mount();
+    const asked: string[] = [];
+    (t.app as unknown as { sync: { titleFor: (x: string) => Promise<string> } }).sync.titleFor =
+      async (text: string) => {
+        asked.push(text);
+        return `Titre ${asked.length}`;
+      };
+    await t.ready;
+    t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
+    await t.tick();
+    t.app.querySelector<HTMLTextAreaElement>(".composer-body")!.value = "pain, beurre";
+    t.app.querySelector<HTMLButtonElement>('[data-composer="save"]')!.click();
+    for (let i = 0; i < 4; i += 1) await t.tick();
+    const [saved] = await t.store.all();
+    expect(saved?.title).toBe("Titre 1");
+    // Saving with the same text keeps the title; new text renames.
+    (t.cards()[0] as HTMLElement).click();
+    await t.tick();
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    for (let i = 0; i < 4; i += 1) await t.tick();
+    expect(asked).toEqual(["pain, beurre"]);
+    (t.cards()[0] as HTMLElement).click();
+    await t.tick();
+    t.app.querySelector<HTMLTextAreaElement>(".editor-body")!.value = "pain, beurre, lait";
+    t.app.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+    for (let i = 0; i < 4; i += 1) await t.tick();
+    expect((await t.store.get(saved!.id))?.title).toBe("Titre 2");
+    t.cleanup();
+  });
+
   test("composer draft survives a store refresh", async () => {
     const t = mount();
     await t.ready;
     t.app.querySelector<HTMLButtonElement>('[data-composer="open"]')!.click();
     await t.tick();
-    t.app.querySelector<HTMLInputElement>(".composer-title")!.value = "Half";
     t.app.querySelector<HTMLTextAreaElement>(".composer-body")!.value = "written";
     await t.store.put(note({ id: "9", title: "Other" }));
     await t.tick();
-    expect(t.app.querySelector<HTMLInputElement>(".composer-title")!.value).toBe("Half");
     expect(t.app.querySelector<HTMLTextAreaElement>(".composer-body")!.value).toBe("written");
     t.cleanup();
   });

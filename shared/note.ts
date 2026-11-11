@@ -203,3 +203,10 @@ export function newNote(
     updatedAt: init.updatedAt ?? Date.now(),
   };
 }
+
+/** A note's words as one text: the body, or its checklist rows when it
+ * has them (what a title is made from). */
+export function noteText(note: Pick<Note, "body" | "checklist">): string {
+  const items = note.checklist ?? [];
+  return items.length > 0 ? items.map((i) => i.text).join("\n") : note.body;
+}

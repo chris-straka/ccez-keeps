@@ -1,7 +1,7 @@
 // Lane A: app shell. Owns view/search state and wires Store + SyncPort
 // to the card grid, inline composer, and editor dialog. Renders from the
 // local store only — it never touches the network (sync lives in lane B).
-import { newNote, type Note } from "../../shared/note.js";
+import { newNote, noteText, type Note } from "../../shared/note.js";
 import type { Drawing } from "../../shared/drawing.js";
 import type { Store, NoteView, SyncStatus } from "../store/types.js";
 import type { DrawingStore } from "../store/drawings.js";
@@ -21,6 +21,8 @@ import { desktopAutostart, desktopSetAutostart, desktopSignIn, isDesktop } from 
 export interface SyncPort {
   schedulePush(): void;
   deleteForever(id: string): Promise<void>;
+  /** A title for a note's text (POST /api/title); null when none came. */
+  titleFor?(text: string): Promise<string | null>;
 }
 
 const ICONS: Record<NoteView, string> = {
@@ -593,7 +595,7 @@ export class KeepsApp extends HTMLElement {
     const composer = !this.composerOpen
       ? null
       : {
-          title: this.querySelector<HTMLInputElement>(".composer-title")?.value ?? "",
+          title: "",
           body: this.querySelector<HTMLTextAreaElement>(".composer-body")?.value ?? "",
         };
     return { editor, composer };
@@ -613,9 +615,7 @@ export class KeepsApp extends HTMLElement {
       ).open(stash.editor, this.labelOptions(), this.ideaEditor ? { idea: true } : undefined);
     }
     if (stash.composer && this.composerOpen) {
-      const title = this.querySelector<HTMLInputElement>(".composer-title");
       const body = this.querySelector<HTMLTextAreaElement>(".composer-body");
-      if (title) title.value = stash.composer.title;
       if (body) {
         body.value = stash.composer.body;
         fitBody(body);
@@ -682,7 +682,6 @@ export class KeepsApp extends HTMLElement {
     }
     return `
       <div class="composer">
-        <input class="composer-title" placeholder="Title" />
         <textarea class="composer-body" placeholder="Take a note..."></textarea>
         <div class="composer-row">
           <span class="editor-spacer"></span>
@@ -1267,11 +1266,10 @@ export class KeepsApp extends HTMLElement {
     const images = clipboardImages(event.clipboardData);
     if (images.length === 0) return;
     event.preventDefault();
-    const title = this.querySelector<HTMLInputElement>(".composer-title")?.value ?? "";
     const body = this.querySelector<HTMLTextAreaElement>(".composer-body")?.value ?? "";
     this.composerOpen = false;
     void this.refresh().then(() => {
-      this.openEditor(null, { title, body, color: "default" });
+      this.openEditor(null, { title: "", body, color: "default" });
       void this.editor().attachFiles(images);
     });
   }
@@ -1488,19 +1486,40 @@ export class KeepsApp extends HTMLElement {
   }
 
   private async saveComposer(): Promise<void> {
-    const title = this.querySelector<HTMLInputElement>(".composer-title")?.value ?? "";
     const body = this.querySelector<HTMLTextAreaElement>(".composer-body")?.value ?? "";
-    if (title.trim() === "" && body.trim() === "") {
+    if (body.trim() === "") {
       this.composerOpen = false;
       await this.refresh();
       return;
     }
     const store = this.requireStore();
-    await store.put(
-      newNote({ id: crypto.randomUUID(), title, body, order: await store.topOrder() }),
-    );
+    const id = crypto.randomUUID();
+    await store.put(newNote({ id, title: "", body, order: await store.topOrder() }));
     this.composerOpen = false;
     buzz("confirm");
+    this.sync?.schedulePush();
+    void this.nameNote(id);
+  }
+
+  /**
+   * Titles name themselves (owner, 2026-11-10): after a save, a note whose
+   * text changed, or that has no title yet, gets one from /api/title. The
+   * answer lands only if the text is still what was named.
+   */
+  private async nameNote(id: string, previousText?: string): Promise<void> {
+    const titleFor = this.sync?.titleFor;
+    if (!titleFor) return;
+    const store = this.requireStore();
+    const note = await store.get(id);
+    if (!note || note.deleted) return;
+    const text = noteText(note);
+    if (text.trim() === "") return;
+    if (note.title !== "" && previousText === text) return;
+    const title = await titleFor.call(this.sync, text).catch(() => null);
+    if (!title) return;
+    const now = await store.get(id);
+    if (!now || now.deleted || noteText(now) !== text || now.title === title) return;
+    await store.put({ ...now, title, updatedAt: Date.now() });
     this.sync?.schedulePush();
   }
 
@@ -1576,15 +1595,20 @@ export class KeepsApp extends HTMLElement {
       draft.body.trim() !== "" ||
       (draft.checklist ?? []).length > 0 ||
       (draft.attachments ?? []).length > 0;
+    let savedId: string;
+    let before: string | undefined;
     if (this.editingId) {
       const existing = await store.get(this.editingId);
       this.editingId = null;
       if (!existing) return;
+      before = noteText(existing);
+      savedId = existing.id;
       await store.put({ ...existing, ...draft, ...extras, updatedAt: Date.now() });
     } else {
       if (!hasContent) return;
+      savedId = crypto.randomUUID();
       await store.put(
-        newNote({ id: crypto.randomUUID(), ...draft, ...extras, order: await store.topOrder() }),
+        newNote({ id: savedId, ...draft, ...extras, order: await store.topOrder() }),
       );
       // A new idea lands where it now lives (Notes no longer shows it).
       if (this.ideaEditor && this.view === "notes" && !this.activeLabelId) {
@@ -1595,6 +1619,7 @@ export class KeepsApp extends HTMLElement {
     }
     buzz("confirm");
     this.sync?.schedulePush();
+    void this.nameNote(savedId, before);
   }
 
   private async onDrawingSave(draft: DrawingDraft): Promise<void> {

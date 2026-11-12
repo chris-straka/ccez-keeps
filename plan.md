@@ -2,7 +2,9 @@
 
 - Notes flicker when tabbing between keeps and ccez-llm (text that looks
   like it came from ccez-llm), and once while typing a line that wrapped.
-  Maybe the ccez-keys Mac app asking the browser for accessibility.
+  Maybe the ccez-keys Mac app asking the browser for accessibility: it set
+  AXEnhancedUserInterface, off since ccez-keys 7a13b70 (2026-11-11). Owner
+  watching; delete this if it doesn't come back.
 
 # Goal
 

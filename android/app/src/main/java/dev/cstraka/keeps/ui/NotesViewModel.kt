@@ -274,7 +274,7 @@ class NotesViewModel(
 
     /**
      * Titles name themselves (owner, 2026-11-10): after a save, a note whose
-     * text changed, or that has no title yet, gets one from /api/title (Muse
+     * text changed, or that has no title yet, gets one from /api/title (DeepSeek
      * on the Worker; this phone has no on-device model). It lands only if
      * the text is still what was named. Offline: the note stays as it is.
      */

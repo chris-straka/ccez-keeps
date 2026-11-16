@@ -115,6 +115,11 @@ wrangler deployments list   # rollback target
 wrangler rollback <deployment-id>
 ```
 
+Worker secrets: `DEEPSEEK_API_KEY` (note titles through DeepSeek,
+`worker/title.ts`; set with `wrangler secret put DEEPSEEK_API_KEY`, unset
+= `/api/title` answers 503) and `IDEAS_READER_SHA256` (set by
+`deploy.yml`, see docs/access.md).
+
 D1 point-in-time recovery: D1 Time Travel in the dashboard
 (`ccez-keeps` database). IndexedDB escape hatch: the app has no UI for it
 yet — export via DevTools console with the store's `exportJson()`.

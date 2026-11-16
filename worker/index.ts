@@ -25,7 +25,7 @@ import {
 import { applySync, getDeltas, type NotesDb } from "./notes.js";
 import { purgeTrash } from "./purge.js";
 import { checkIdeasReader, listIdeas } from "./ideas.js";
-import { museTitler, type Titler } from "./title.js";
+import { titlerFor, type Titler } from "./title.js";
 
 export interface WorkerEnv {
   // Minimal surface we use; avoids DOM-vs-Workers lib clashes.
@@ -36,8 +36,8 @@ export interface WorkerEnv {
   ACCESS_AUD?: string;
   /** SHA-256 hex of the ideas reader token (wrangler secret); unset = 503. */
   IDEAS_READER_SHA256?: string;
-  /** Muse key for note titles (wrangler secret); unset = titles 503. */
-  MUSE_API_KEY?: string;
+  /** DeepSeek key for note titles (wrangler secret); unset = titles 503. */
+  DEEPSEEK_API_KEY?: string;
 }
 
 export interface AppDeps {
@@ -259,7 +259,9 @@ export function createApp(deps: AppDeps) {
 
   // POST /api/title { text } -> { title } (worker/title.ts)
   app.post("/api/title", async (c) => {
-    if (!deps.titler) return c.json({ error: "titles are off" }, 503);
+    if (!deps.titler) {
+      return c.json({ error: "titles are off: DEEPSEEK_API_KEY is not set" }, 503);
+    }
     let body: unknown;
     try {
       body = await c.req.json();
@@ -270,7 +272,16 @@ export function createApp(deps: AppDeps) {
     if (typeof text !== "string" || text.trim() === "") {
       return c.json({ error: "text must be a non-empty string" }, 400);
     }
-    const title = await deps.titler(text).catch(() => null);
+    let title: string | null;
+    try {
+      title = await deps.titler(text);
+    } catch (err) {
+      // DeepSeek's reason (wrong key, balance used up, rate limit) for
+      // Workers Logs; clients only see that no title came.
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`[keeps] title failed: ${reason}`);
+      return c.json({ error: reason }, 502);
+    }
     if (!title) return c.json({ error: "no title" }, 502);
     return c.json({ title });
   });
@@ -419,7 +430,7 @@ export default {
         assetsFetch: (req) => env.ASSETS.fetch(req),
         access: { teamDomain: env.ACCESS_TEAM_DOMAIN, aud: env.ACCESS_AUD },
         ideasReaderHash: env.IDEAS_READER_SHA256,
-        titler: env.MUSE_API_KEY ? museTitler(env.MUSE_API_KEY) : undefined,
+        titler: titlerFor(env.DEEPSEEK_API_KEY),
       });
       return app.fetch(request, env);
     }

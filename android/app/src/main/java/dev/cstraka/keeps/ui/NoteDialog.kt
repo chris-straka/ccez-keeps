@@ -40,6 +40,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -172,7 +174,6 @@ fun NoteDialog(
     onSaveDrawing: (String, List<DrawingStroke>) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     val bodyFocus = remember { FocusRequester() }
     // State-based fields: only these take pasted images (contentReceiver).
@@ -273,12 +274,6 @@ fun NoteDialog(
             bodyFocus.requestFocus()
         } catch (_: IllegalStateException) {
         }
-    }
-    fun focusBodyAtEnd() {
-        if (items == null) bodyState.edit { selection = TextRange(length) }
-        focusBody()
-        // Already focused, the keyboard put away: focusing again doesn't bring it back.
-        keyboard?.show()
     }
     // Undo history over body text (mirrors the web editor's snapshot
     // history; title stays a plain field on both clients).
@@ -438,6 +433,14 @@ fun NoteDialog(
             decorFitsSystemWindows = false,
         ),
     ) {
+        val dialogKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
+        fun focusBodyAtEnd() {
+            if (items == null) bodyState.edit { selection = TextRange(length) }
+            focusBody()
+            // Already focused, the keyboard put away: focusing again doesn't bring it back.
+            dialogKeyboard?.show()
+        }
         Box(
             modifier = Modifier.fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.7f))
@@ -448,10 +451,16 @@ fun NoteDialog(
             // it fired before the fields were attached and focused nothing.
             LaunchedEffect(Unit) {
                 try {
-                    if (initialChecklist == null || initialChecklist.isNotEmpty()) {
+                    if (!startWithReminderPicker && (initialChecklist == null || initialChecklist.isNotEmpty())) {
                         bodyFocus.requestFocus()
                     }
                 } catch (_: IllegalStateException) {
+                }
+            }
+            LaunchedEffect(windowInfo.isWindowFocused) {
+                if (windowInfo.isWindowFocused && !startWithReminderPicker && (initialChecklist == null || initialChecklist.isNotEmpty())) {
+                    focusBody()
+                    dialogKeyboard?.show()
                 }
             }
             Card(
@@ -463,8 +472,13 @@ fun NoteDialog(
                 // themselves. The title stays for accessibility.
                 Column(Modifier.fillMaxSize().semantics { paneTitle = title }) {
                     Spacer(Modifier.height(8.dp))
+                    var viewportHeightPx by remember { mutableStateOf(0) }
+                    val minBodyHeight = with(LocalDensity.current) {
+                        (viewportHeightPx.toDp() - 8.dp).coerceAtLeast(120.dp)
+                    }
                     Column(
                         modifier = Modifier.weight(1f)
+                            .onSizeChanged { viewportHeightPx = it.height }
                             // A tap in the empty space under the text types
                             // at its end (owner, 2026-11-10: only the first
                             // lines took a tap).
@@ -485,7 +499,9 @@ fun NoteDialog(
                                 placeholder = "Note",
                                 textStyle = MaterialTheme.typography.bodyLarge,
                                 lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 4),
-                                modifier = Modifier.fillMaxWidth().focusRequester(bodyFocus)
+                                modifier = Modifier.fillMaxWidth()
+                                    .then(if (selIds.isEmpty() && reminder == null) Modifier.heightIn(min = minBodyHeight) else Modifier)
+                                    .focusRequester(bodyFocus)
                                     .then(receiveImages)
                                     .testTag("editorBody"),
                             )

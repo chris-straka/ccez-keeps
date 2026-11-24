@@ -91,6 +91,26 @@ class EditorFocusUiTest {
     }
 
     @Test
+    fun tappingBottomOfEmptyNewNote_keepsBodyFocusedAndAcceptsInput() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            waitForSeed()
+            compose.onNodeWithContentDescription("Take a note").performClick()
+            val scrollBounds = compose.onNodeWithTag("editorScroll").fetchSemanticsNode().boundsInRoot
+            val bodyBounds = compose.onNodeWithTag("editorBody").fetchSemanticsNode().boundsInRoot
+            org.junit.Assert.assertTrue(
+                "editorBody (${bodyBounds.height}) should fill editorScroll (${scrollBounds.height})",
+                bodyBounds.height >= scrollBounds.height - 40f,
+            )
+            compose.onNodeWithTag("editorScroll").performTouchInput {
+                click(androidx.compose.ui.geometry.Offset(centerX, bottom - 20f))
+            }
+            compose.onNodeWithTag("editorBody").assertIsFocused()
+            compose.onNodeWithTag("editorBody").performTextInput("hello")
+            compose.onNodeWithText("hello").assertIsDisplayed()
+        }
+    }
+
+    @Test
     fun tappingNoteBody_opensWithBodyFocused() {
         ActivityScenario.launch(MainActivity::class.java).use {
             waitForSeed()
